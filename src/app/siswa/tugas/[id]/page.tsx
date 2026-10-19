@@ -1,0 +1,293 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { requireSiswa } from "@/lib/sesi-siswa";
+import { banyakBaris, satuBaris } from "@/lib/db";
+import { urlBerkas } from "@/lib/tugas";
+import { tenggatSudahLewat } from "@/lib/deadline";
+import { FormKumpulTugas } from "@/components/form-kumpul-tugas";
+import { Kartu } from "@/components/ui/kartu";
+import { Badge } from "@/components/ui/badge";
+import { Notifikasi } from "@/components/ui/notifikasi";
+import {
+  LABEL_METODE,
+  ambilKelasTugas,
+  bacaMetode,
+  tugasDibuka,
+  formatUkuran,
+} from "@/lib/tugas";
+
+function formatWaktu(iso: string | null): string {
+  if (!iso) return "Tanpa tenggat";
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return "-";
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(t);
+}
+
+type BerkasRow = {
+  id: string;
+  tipe: "foto" | "dokumen";
+  nama_file: string;
+  path: string;
+  ukuran: number;
+};
+
+export default async function DetailTugasSiswaPage(
+  props: PageProps<"/siswa/tugas/[id]">,
+) {
+  const { id } = await props.params;
+  const { siswa } = await requireSiswa();
+
+  const tugas = await satuBaris<{
+    id: string;
+    judul: string;
+    deskripsi: string | null;
+    tenggat: string | null;
+    metode: string | null;
+    file_diizinkan: string[] | null;
+    dibuka: boolean | null;
+  }>(
+    `select id, judul, deskripsi, tenggat, metode, file_diizinkan, dibuka
+     from assignments where id = $1`,
+    [id],
+  );
+
+  if (!tugas) {
+    redirect("/siswa/tugas");
+  }
+
+  const hubungan = await banyakBaris<{ kelas_id: string }>(
+    `select kelas_id from assignment_classes where tugas_id = $1`,
+    [id],
+  );
+
+  const daftarKelasId = ambilKelasTugas({ assignment_classes: hubungan });
+  const relevan =
+    daftarKelasId.length === 0 ||
+    (siswa.kelas_id !== null && daftarKelasId.includes(siswa.kelas_id));
+
+  if (!relevan) {
+    redirect("/siswa/tugas");
+  }
+
+  const metode = bacaMetode(tugas.metode);
+
+  const submissionData = await satuBaris<{
+    id: string;
+    tautan: string | null;
+    catatan: string | null;
+    nilai: number | null;
+    umpan_balik: string | null;
+    updated_at: string | null;
+  }>(
+    `select id, tautan, catatan, nilai, umpan_balik, updated_at
+     from assignment_submissions
+     where tugas_id = $1 and siswa_id = $2`,
+    [id, siswa.id],
+  );
+
+  const berkas = submissionData
+    ? await banyakBaris<BerkasRow>(
+        `select id, tipe, nama_file, path, ukuran
+         from assignment_files where submission_id = $1
+         order by created_at asc`,
+        [submissionData.id],
+      )
+    : [];
+
+  const submission = submissionData
+    ? { ...submissionData, assignment_files: berkas }
+    : null;
+
+  const foto = berkas.filter((b) => b.tipe === "foto");
+  const dokumen = berkas.filter((b) => b.tipe === "dokumen");
+
+  const lewat = tenggatSudahLewat(tugas.tenggat);
+  const dibuka = tugasDibuka(tugas);
+  const bolehKumpul = !lewat && dibuka;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <Link
+          href="/siswa/tugas"
+          className="text-sm text-slate-500 transition hover:text-slate-900"
+        >
+          ← Kembali ke daftar tugas
+        </Link>
+        <h1 className="mt-1 text-2xl font-semibold text-slate-900">
+          {tugas.judul}
+        </h1>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+          <Badge varian="netral">{LABEL_METODE[metode]}</Badge>
+          <span>Tenggat: {formatWaktu(tugas.tenggat)}</span>
+          {submission ? (
+            <Badge varian="sukses" titik>
+              Sudah dikumpulkan
+            </Badge>
+          ) : lewat ? (
+            <Badge varian="bahaya">Lewat tenggat</Badge>
+          ) : (
+            <Badge varian="peringatan">Belum dikumpulkan</Badge>
+          )}
+          {!dibuka ? <Badge varian="bahaya">Ditutup guru</Badge> : null}
+        </div>
+        {tugas.deskripsi ? (
+          <p className="mt-3 text-sm whitespace-pre-wrap text-slate-600">
+            {tugas.deskripsi}
+          </p>
+        ) : null}
+      </div>
+
+      {submission ? (
+        <Kartu>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h2 className="text-sm font-semibold text-slate-900">
+              Pengumpulanmu
+            </h2>
+            {submission.nilai !== null ? (
+              <Badge varian="sukses">Nilai: {submission.nilai}</Badge>
+            ) : (
+              <Badge varian="peringatan">Menunggu penilaian</Badge>
+            )}
+          </div>
+
+          <div className="mt-3 space-y-3">
+            {submission.tautan ? (
+              <div>
+                <p className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                  Tautan
+                </p>
+                <a
+                  href={submission.tautan}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 block break-all text-sm font-medium text-blue-600 underline hover:no-underline"
+                >
+                  {submission.tautan}
+                </a>
+              </div>
+            ) : null}
+
+            {submission.catatan ? (
+              <div>
+                <p className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                  Catatanmu
+                </p>
+                <p className="mt-1 text-sm whitespace-pre-wrap text-slate-700">
+                  {submission.catatan}
+                </p>
+              </div>
+            ) : null}
+
+            {foto.length > 0 ? (
+              <div>
+                <p className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                  Foto ({foto.length})
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {foto.map((berkasFoto) => {
+                    const url = urlBerkas(berkasFoto.path);
+                    return (
+                      <a
+                        key={berkasFoto.id}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={berkasFoto.nama_file}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={url}
+                          alt={berkasFoto.nama_file}
+                          className="h-24 w-24 rounded-lg object-cover ring-1 ring-slate-200"
+                        />
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            {dokumen.length > 0 ? (
+              <div>
+                <p className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                  Dokumen ({dokumen.length})
+                </p>
+                <ul className="mt-1 space-y-1">
+                  {dokumen.map((berkasDok) => (
+                    <li key={berkasDok.id}>
+                      <a
+                        href={urlBerkas(berkasDok.path)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 underline hover:no-underline"
+                      >
+                        📄 {berkasDok.nama_file}
+                        <span className="text-xs font-normal text-slate-400 no-underline">
+                          ({formatUkuran(berkasDok.ukuran)})
+                        </span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {submission.umpan_balik ? (
+              <div className="rounded-xl bg-emerald-50 p-3 ring-1 ring-emerald-100">
+                <p className="text-xs font-semibold text-emerald-700">
+                  Umpan balik guru
+                </p>
+                <p className="mt-1 text-sm whitespace-pre-wrap text-emerald-900">
+                  {submission.umpan_balik}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          {!bolehKumpul ? (
+            <p className="mt-3 text-xs text-slate-400">
+              {!dibuka
+                ? "Tugas sudah ditutup oleh guru, pengumpulan tidak bisa diubah lagi."
+                : "Tenggat sudah lewat, pengumpulan tidak bisa diubah lagi."}
+            </p>
+          ) : null}
+        </Kartu>
+      ) : null}
+
+      {bolehKumpul ? (
+        <div>
+          <h2 className="mb-2 text-sm font-semibold text-slate-900">
+            {submission ? "Perbarui pengumpulan" : "Kumpulkan tugas"}
+          </h2>
+          <FormKumpulTugas
+            tugasId={id}
+            metode={metode}
+            fileDiizinkan={tugas.file_diizinkan ?? []}
+            tautanAwal={submission?.tautan ?? null}
+            catatanAwal={submission?.catatan ?? null}
+            adaBerkasLama={berkas.length > 0}
+          />
+        </div>
+      ) : !submission ? (
+        !dibuka ? (
+          <Notifikasi varian="gagal" judul="Tugas ditutup">
+            Tugas ini sudah ditutup oleh guru. Kamu tidak bisa mengumpulkan
+            lagi.
+          </Notifikasi>
+        ) : (
+          <Notifikasi varian="gagal" judul="Tenggat sudah lewat">
+            Kamu belum mengumpulkan tugas ini dan waktunya sudah habis. Hubungi
+            gurumu kalau ada masalah.
+          </Notifikasi>
+        )
+      ) : null}
+    </div>
+  );
+}
