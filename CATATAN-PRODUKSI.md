@@ -41,43 +41,28 @@ Catatan:
 
 ## Deploy
 
-### Cara A — Build di lokal, unggah `.next` (dipakai hosting ini)
+Alur lengkap ada di **`PANDUAN-DEPLOY.md`**. Ringkasnya:
+
+```powershell
+# Di laptop
+.\deploy.ps1 -Pesan "Deskripsi perubahan"
+```
+
+Lalu di cPanel: upload `next-build.zip` → Extract di folder `kelasbit` →
+Terminal (`git pull`, `chmod -R u+rwX .next`) → **Setup Node.js App → Restart**.
+
+### Kenapa build dilakukan di laptop
 
 Hosting ini memakai glibc lama (CentOS 7), sehingga binary native Turbopack/SWC
 gagal dimuat. Next.js otomatis jatuh ke WASM dan build di server bisa memakan
-puluhan menit. Karena itu build dilakukan di lokal:
+puluhan menit. Build lokal selesai dalam ~15 detik dan hasilnya hanya ~2 MB.
 
-```powershell
-cd C:\ngoding\kelasbit
-npm run build
-Remove-Item -Recurse -Force .next\cache,.next\trace,.next\trace-build,.next\diagnostics
-Compress-Archive -Path .next -DestinationPath next-build.zip -Force
-```
-
-Lalu di cPanel:
-
-1. File Manager → folder `kelasbit` → **Upload** `next-build.zip`.
-2. Klik kanan → **Extract** ke folder saat ini (hasil: folder `.next`).
-3. Terminal cPanel:
-   ```bash
-   cd ~/kelasbit
-   chmod -R u+rwX .next
-   find .next -type d ! -perm -u+r -exec chmod 755 {} \;
-   find .next -type f ! -perm -u+r -exec chmod 644 {} \;
-   cat .next/BUILD_ID
-   rm -f next-build.zip
-   ```
-4. **Setup Node.js App → Restart**.
-
-Hasil extract lewat File Manager bisa kehilangan izin baca, jadi langkah
-`chmod` di atas wajib. Tanpa itu Passenger gagal memuat aset.
-
-### Cara B — Build di server (lambat)
+### Build langsung di server (tidak disarankan)
 
 ```bash
 cd ~/kelasbit
 npm ci
-npx next build --webpack
+npm run build
 ```
 
 `npm run build` sudah memakai `--webpack` karena Turbopack tidak tersedia di
@@ -86,7 +71,7 @@ platform ini. Toolchain tetap memakai SWC WASM, jadi build bisa 20–40 menit.
 Catatan npm: hosting menyetel `omit=dev` secara global sehingga
 devDependencies terbuang dan build gagal (`Cannot find module
 '@tailwindcss/postcss'`). File `.npmrc` di root proyek menimpa setelan itu
-(`omit=` dan `include=dev`); jangan dihapus.
+(`include=dev`); jangan dihapus.
 
 ## Update Database
 
@@ -122,6 +107,6 @@ Menjalankan ulang dengan username yang sama akan mengatur ulang password.
 | Halaman 500 / "DATABASE_URL belum diisi" | Env `DATABASE_URL` belum diisi atau belum Restart. |
 | Login guru selalu gagal | Tabel `guru_accounts` kosong atau `GURU_SESSION_SECRET` belum diisi. |
 | Upload tugas gagal | Folder `UPLOAD_DIR` tidak ada / tidak writable. |
-| Aset CSS hilang | `npm run build` belum dijalankan setelah update. |
+| Aset CSS hilang | `npm run build` belum dijalankan setelah update / `.next` belum di-extract. |
 | Perubahan env tidak berefek | Belum Restart aplikasi. |
 | Halaman login siswa kosong (dropdown tanpa data) | Query gagal karena skema belum dijalankan ulang / DB tidak bisa dihubungi; cek log Passenger. |
