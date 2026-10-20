@@ -166,6 +166,25 @@ cd ~/kelasbit
 git pull
 ```
 
+### Aktifkan Node di Terminal cPanel
+
+Terminal cPanel **tidak** memuat Node secara otomatis. Setiap membuka Terminal
+baru, jalankan dulu:
+
+```bash
+export PATH="$HOME/nodevenv/kelasbit/22/bin:$PATH"
+node -v
+```
+
+Harus muncul `v22.x`. Tanpa langkah ini, `npm`, `node`, dan `psql`-pendukung
+skrip akan gagal dengan `command not found`.
+
+Supaya tidak perlu diulang tiap sesi, tambahkan sekali ke `~/.bashrc`:
+
+```bash
+echo 'export PATH="$HOME/nodevenv/kelasbit/22/bin:$PATH"' >> ~/.bashrc
+```
+
 ### Kalau ada dependensi baru di `package.json`
 
 ```bash

@@ -22,6 +22,24 @@ tempatnya dan tidak perlu disalin ulang setiap build.
 
 `package.json` → `"start": "node server.js"`.
 
+## Terminal cPanel
+
+Terminal cPanel **tidak** memuat Node secara otomatis - hanya Passenger yang
+punya PATH-nya. Setiap membuka Terminal baru, jalankan dulu:
+
+```bash
+export PATH="$HOME/nodevenv/kelasbit/22/bin:$PATH"
+node -v
+```
+
+Tanpa ini, `npm`, `node`, dan `npx` gagal dengan `command not found`.
+
+Supaya permanen untuk semua sesi berikutnya:
+
+```bash
+echo 'export PATH="$HOME/nodevenv/kelasbit/22/bin:$PATH"' >> ~/.bashrc
+```
+
 ## Environment Variables
 
 Diisi di **cPanel → Setup Node.js App → Environment Variables**.
