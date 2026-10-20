@@ -41,14 +41,52 @@ Catatan:
 
 ## Deploy
 
-1. Upload kode (git pull / File Manager) ke `/home/USER/kelasbit`.
-2. Terminal cPanel:
+### Cara A — Build di lokal, unggah `.next` (dipakai hosting ini)
+
+Hosting ini memakai glibc lama (CentOS 7), sehingga binary native Turbopack/SWC
+gagal dimuat. Next.js otomatis jatuh ke WASM dan build di server bisa memakan
+puluhan menit. Karena itu build dilakukan di lokal:
+
+```powershell
+cd C:\ngoding\kelasbit
+npm run build
+Remove-Item -Recurse -Force .next\cache,.next\trace,.next\trace-build,.next\diagnostics
+Compress-Archive -Path .next -DestinationPath next-build.zip -Force
+```
+
+Lalu di cPanel:
+
+1. File Manager → folder `kelasbit` → **Upload** `next-build.zip`.
+2. Klik kanan → **Extract** ke folder saat ini (hasil: folder `.next`).
+3. Terminal cPanel:
    ```bash
    cd ~/kelasbit
-   npm ci
-   npm run build
+   chmod -R u+rwX .next
+   find .next -type d ! -perm -u+r -exec chmod 755 {} \;
+   find .next -type f ! -perm -u+r -exec chmod 644 {} \;
+   cat .next/BUILD_ID
+   rm -f next-build.zip
    ```
-3. **Setup Node.js App → Restart**.
+4. **Setup Node.js App → Restart**.
+
+Hasil extract lewat File Manager bisa kehilangan izin baca, jadi langkah
+`chmod` di atas wajib. Tanpa itu Passenger gagal memuat aset.
+
+### Cara B — Build di server (lambat)
+
+```bash
+cd ~/kelasbit
+npm ci
+npx next build --webpack
+```
+
+`npm run build` sudah memakai `--webpack` karena Turbopack tidak tersedia di
+platform ini. Toolchain tetap memakai SWC WASM, jadi build bisa 20–40 menit.
+
+Catatan npm: hosting menyetel `omit=dev` secara global sehingga
+devDependencies terbuang dan build gagal (`Cannot find module
+'@tailwindcss/postcss'`). File `.npmrc` di root proyek menimpa setelan itu
+(`omit=` dan `include=dev`); jangan dihapus.
 
 ## Update Database
 
