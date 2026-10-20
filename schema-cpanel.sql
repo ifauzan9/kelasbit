@@ -23,10 +23,16 @@ returns uuid
 language sql
 volatile
 as $$
+  -- Bangun UUID v4 lengkap (8-4-4-4-12 hex) lalu cast ke tipe uuid.
+  -- md5() selalu menghasilkan tepat 32 karakter hex, jadi panjang tiap
+  -- potongan dijamin benar (berbeda dari to_hex(bigint) yang bisa meleset).
   select (
-    lpad(to_hex((extract(epoch from clock_timestamp()) * 1000000)::bigint), 12, '0')
-    || lpad(to_hex(floor(random() * 4294967296)::bigint), 8, '0')
-    || lpad(to_hex(floor(random() * 65536)::bigint), 4, '0')
+    substr(md5(random()::text || clock_timestamp()::text), 1, 8) || '-'
+    || substr(md5(random()::text || clock_timestamp()::text), 1, 4) || '-'
+    || '4' || substr(md5(random()::text || clock_timestamp()::text), 2, 3) || '-'
+    || substr('89ab', 1 + floor(random() * 4)::int, 1)
+    || substr(md5(random()::text || clock_timestamp()::text), 2, 3) || '-'
+    || substr(md5(random()::text || clock_timestamp()::text), 1, 12)
   )::uuid;
 $$;
 
