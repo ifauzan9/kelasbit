@@ -20,6 +20,7 @@
 /.next/
 /out/
 .next-build.zip
+next-build.zip
 
 # production
 /build
