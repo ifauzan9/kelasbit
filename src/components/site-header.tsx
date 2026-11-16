@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BookOpen, LogIn } from "./icons";
+import { LinkPendingIndicator } from "./link-pending";
 
 const navigation = [
   { label: "Beranda", href: "#beranda", active: true },
@@ -45,7 +46,7 @@ export function SiteHeader() {
           href="/login"
           className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-3.5 py-2.5 text-[13px] font-semibold text-white shadow-lg shadow-brand-600/30 transition-colors hover:bg-brand-700 sm:px-5 sm:py-3 sm:text-sm"
         >
-          <LogIn className="h-4 w-4" />
+          <LinkPendingIndicator idle={<LogIn className="h-4 w-4" />} />
           Login Siswa
         </Link>
       </div>

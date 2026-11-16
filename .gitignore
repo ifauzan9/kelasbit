@@ -17,5 +17,8 @@
 .DS_Store
 npm-debug.log*
 
+# build artifacts
+*.zip
+
 # tooling
 .commandcode/
