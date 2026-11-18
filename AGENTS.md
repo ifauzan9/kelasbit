@@ -28,6 +28,16 @@ Aturan yang tidak boleh dilanggar:
 10. **Simpan zip build sebelumnya** untuk rollback, dan ingatkan user **Restart**
     aplikasi di cPanel setelah extract (jangan *Run NPM Install*).
 
+## Aturan git (wajib)
+
+1. **Jangan commit atau push otomatis** setelah menyelesaikan fitur. Tunggu perintah eksplisit
+   dari user ("commit", "push").
+2. Setelah pekerjaan selesai, cukup laporkan file yang berubah dan usulkan pesan commit.
+3. Saat diminta commit: sertakan hanya perubahan yang relevan dan pastikan working tree
+   memang yang diinginkan (cek `git status` dulu).
+4. **Jangan pernah** ikutkan `.env`, `*.zip`, dump DB, atau file di luar repo.
+5. Branch utama: `main`. Jangan rename/force-push tanpa persetujuan user.
+
 ## Konvensi kode
 
 - Bahasa UI dan dokumentasi: Indonesia.
