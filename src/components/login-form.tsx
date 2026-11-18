@@ -27,16 +27,18 @@ export function LoginForm({ role }: LoginFormProps) {
     <form action={formAction} className="space-y-5">
       <input type="hidden" name="role" value={role} />
       <div className="space-y-2">
-        <label htmlFor="email" className="block text-sm font-semibold text-slate-700">
-          Email
+        <label htmlFor="identifier" className="block text-sm font-semibold text-slate-700">
+          {isGuru ? "Email" : "Username"}
         </label>
         <input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="email"
+          id="identifier"
+          name="identifier"
+          type={isGuru ? "email" : "text"}
+          autoComplete={isGuru ? "email" : "username"}
+          autoCapitalize="none"
+          spellCheck={false}
           required
-          placeholder="nama@sekolah.sch.id"
+          placeholder={isGuru ? "nama@sekolah.sch.id" : "budi.santoso"}
           className={`w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:ring-2 ${
             isGuru
               ? "focus:border-emerald-500 focus:ring-emerald-200"

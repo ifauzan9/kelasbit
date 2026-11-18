@@ -12,7 +12,8 @@ const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export type SessionUser = {
   id: number;
   name: string;
-  email: string;
+  email: string | null;
+  username: string | null;
   role: Role;
 };
 
@@ -62,10 +63,17 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     return null;
   }
 
+  // Akun yang dinonaktifkan langsung kehilangan sesinya.
+  if (!row.user.isActive) {
+    await db.delete(sessions).where(eq(sessions.id, sessionId));
+    return null;
+  }
+
   return {
     id: row.user.id,
     name: row.user.name,
     email: row.user.email,
+    username: row.user.username,
     role: row.user.role as Role,
   };
 }

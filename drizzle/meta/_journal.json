@@ -22,6 +22,27 @@
       "when": 1794818646401,
       "tag": "0002_shallow_spot",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794917966073,
+      "tag": "0003_icy_johnny_blaze",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794919938764,
+      "tag": "0004_fuzzy_sersi",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794923654786,
+      "tag": "0005_solid_paladin",
+      "breakpoints": true
     }
   ]
 }

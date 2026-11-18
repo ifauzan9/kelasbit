@@ -15,7 +15,7 @@ function parseRole(value: FormDataEntryValue | null): Role | null {
 
 export async function login(_prevState: LoginState, formData: FormData): Promise<LoginState> {
   const role = parseRole(formData.get("role"));
-  const email = String(formData.get("email") ?? "")
+  const identifier = String(formData.get("identifier") ?? "")
     .trim()
     .toLowerCase();
   const password = String(formData.get("password") ?? "");
@@ -24,8 +24,10 @@ export async function login(_prevState: LoginState, formData: FormData): Promise
     return { error: "Halaman login tidak valid." };
   }
 
-  if (!email || !password) {
-    return { error: "Email dan password wajib diisi." };
+  const identifierLabel = role === "guru" ? "Email" : "Username";
+
+  if (!identifier || !password) {
+    return { error: `${identifierLabel} dan password wajib diisi.` };
   }
 
   let user: typeof users.$inferSelect | undefined;
@@ -34,7 +36,7 @@ export async function login(_prevState: LoginState, formData: FormData): Promise
     [user] = await getDb()
       .select()
       .from(users)
-      .where(eq(users.email, email))
+      .where(role === "guru" ? eq(users.email, identifier) : eq(users.username, identifier))
       .limit(1);
   } catch (error) {
     console.error("login: gagal mengambil data user", error);
@@ -42,7 +44,11 @@ export async function login(_prevState: LoginState, formData: FormData): Promise
   }
 
   if (!user || !(await verifyPassword(password, user.passwordHash)) || user.role !== role) {
-    return { error: "Email atau password salah." };
+    return { error: `${identifierLabel} atau password salah.` };
+  }
+
+  if (!user.isActive) {
+    return { error: "Akun ini dinonaktifkan. Hubungi guru." };
   }
 
   try {

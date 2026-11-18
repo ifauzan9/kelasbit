@@ -1,6 +1,6 @@
 # Status Pengerjaan
 
-Terakhir diperbarui: 16 November 2026
+Terakhir diperbarui: 17 November 2026
 
 ## Yang sudah jadi
 
@@ -11,6 +11,8 @@ Terakhir diperbarui: 16 November 2026
 - `src/app/api/health/route.ts` — health check, terverifikasi `{"status":"ok","db":true}`
 - Landing page: `src/app/page.tsx`, `src/components/site-header.tsx`, `site-footer.tsx`, `icons.tsx`, `globals.css`
 - `README.md` — panduan dev lokal (Docker) + deploy cPanel
+- `DEPLOY.md` — checklist upload fitur baru ke cPanel (backup DB, migrasi, rollback)
+- `AGENTS.md` — aturan kerja agent, termasuk aturan keamanan deploy & database
 - `scripts/prepare-deploy.mjs` — menyalin `public` + `.next/static` ke bundle standalone
 
 ### Autentikasi
@@ -25,7 +27,7 @@ Terakhir diperbarui: 16 November 2026
 - `src/components/login-form.tsx` — satu form dipakai dua role (warna & label berbeda)
 - `src/components/auth-card.tsx` — kerangka kartu halaman login + `AuthLink`
 - `scripts/seed.ts` + `npm run db:seed` — akun demo:
-  - `siswa@kelasbit.id` / `siswa12345` (role siswa)
+  - `siswa` (username) / `siswa12345` (role siswa), email `siswa@kelasbit.id`
   - `guru@kelasbit.id` / `guru12345` (role guru)
 
 ### Rute
@@ -38,6 +40,8 @@ Terakhir diperbarui: 16 November 2026
 | `/login/guru` | Form login guru |
 | `/siswa` | Dashboard siswa (wajib login sebagai siswa) |
 | `/guru` | Dashboard guru (wajib login sebagai guru) |
+| `/guru/kelas` | Manajemen kelas (wajib login sebagai guru) |
+| `/guru/siswa` | Manajemen siswa + akun login (wajib login sebagai guru) |
 | `/sesi` | Route handler: arahkan ke dashboard sesuai role (dipakai middleware) |
 | `/api/health` | Health check + tes koneksi DB |
 
@@ -47,7 +51,8 @@ Aturan akses:
 - Sudah login buka `/login*` → middleware 307 ke `/sesi` → dashboard sesuai role
 - Role salah (guru buka `/siswa`) → middleware 307 ke `/sesi` → dashboard role-nya
 - Login di halaman role yang salah (mis. akun guru di `/login/siswa`) → ditolak dengan
-  pesan umum "Email atau password salah." (tidak membocorkan role akun)
+  pesan umum "Username atau password salah." / "Email atau password salah."
+  (tidak membocorkan role akun)
 - `/dashboard` lama sudah dihapus; sekarang `/siswa` dan `/guru`
 
 Middleware (`src/middleware.ts`) hanya memeriksa **keberadaan** cookie (`kelasbit_session`
@@ -56,9 +61,10 @@ lewat `requireUser(role)` yang memvalidasi sesi ke database.
 
 ### Dashboard siswa
 
-- Route group `(public)` untuk halaman publik (`/`, `/login*`, `/guru`) dengan header/footer situs.
+- Route group `(public)` untuk halaman publik (`/`, `/login*`) dengan header/footer situs.
 - Route group `(dashboard)` untuk area siswa, memakai shell sendiri lewat
   `src/components/dashboard/dashboard-shell.tsx` (sidebar nav + topbar + profil + logout).
+- Route group `(guru)` untuk area guru, memakai `src/components/guru/guru-shell.tsx`.
 - `/siswa` menampilkan banner sapaan dan kartu **empty state**: Materi Terbaru, Tugas Aktif,
   Jadwal Hari Ini, Progress Belajar, dan Pengumuman. Belum ada data contoh.
 - Skeleton `src/app/(dashboard)/siswa/loading.tsx` meniru banner + grid kartu.
@@ -77,6 +83,93 @@ lewat `requireUser(role)` yang memvalidasi sesi ke database.
 - Status: create, read, update, dan delete sudah diuji end-to-end lewat browser;
   `tsc --noEmit` dan `npm run lint` bersih.
 
+### Manajemen kelas (dashboard guru)
+
+- Tabel `kelas` (`id`, `name`, `academic_year`, `created_at`, `updated_at`) lewat
+  migration `drizzle/0003_icy_johnny_blaze.sql`. Unik per pasangan `(name, academic_year)`.
+- Halaman `/guru/kelas` — form tambah kelas (nama + tahun ajaran) dan daftar kelas
+  yang dikelompokkan per tahun ajaran (terbaru di atas), lengkap dengan pencarian.
+- Server Actions: `src/lib/guru/kelas-actions.ts` (`createKelas`, `updateKelas`,
+  `deleteKelas`), dilindungi `requireUser("guru")`; cek duplikat case-insensitive dan
+  tetap menangkap unique violation `23505` sebagai jaring pengaman.
+- Query: `src/lib/guru/kelas-queries.ts` (urut `academic_year` terbaru, lalu `name`,
+  sekaligus menghitung jumlah siswa per kelas).
+- Komponen: `src/components/guru/kelas-manager.tsx`, `kelas-row.tsx`,
+  dan `guru-nav.tsx` (nav client dengan `usePathname()` supaya menu aktif akurat).
+- Tahun ajaran memakai format `YYYY/YYYY` (`2026/2027`), divalidasi bahwa tahun kedua
+  adalah tahun pertama + 1. Pilihan dropdown dibangkitkan otomatis dari
+  `academicYearOptions()` (tahun berjalan −2 s/d +1), default `currentAcademicYear()`
+  yang berganti tiap Juli.
+- Setiap baris kelas menampilkan jumlah siswanya. Hapus kelas bersifat permanen dengan
+  konfirmasi yang menyebutkan berapa siswa akan menjadi "tanpa kelas"; akun siswanya
+  tidak dihapus (`users.kelas_id` → `ON DELETE SET NULL`).
+- Status: create, read, update, delete, penolakan duplikat (case-insensitive), filter
+  per tahun ajaran, pencarian, dan efek hapus kelas ke siswa sudah diuji end-to-end
+  lewat browser; `tsc --noEmit`, `npm run lint`, dan `npm run build` bersih. Data uji
+  sudah dihapus dari DB lokal.
+
+### Manajemen siswa (dashboard guru)
+
+- Kolom baru di `users`: `username` (unik, dipakai login siswa), `email` kini opsional,
+  dan `is_active` (default `true`) lewat migration `drizzle/0004_fuzzy_sersi.sql`.
+  Migration juga mem-backfill username akun lama (demo siswa → `siswa`).
+- Relasi kelas: `users.kelas_id` (nullable) → `kelas.id` `ON DELETE SET NULL` + index,
+  lewat migration `drizzle/0005_solid_paladin.sql`.
+- Halaman `/guru/siswa` — statistik (total, aktif, nonaktif, tanpa kelas), form tambah
+  siswa (nama, email, kelas), daftar siswa dengan pencarian, filter status, dan filter
+  kelas.
+- Username dibuat otomatis dari nama (`budi.santoso`; bentrok → `budi.santoso2`) dan
+  tidak berubah setelah dibuat. Password awal 12 karakter acak tanpa karakter ambigu.
+- Kredensial ditampilkan sekali di panel dengan tombol salin (termasuk nama kelas);
+  guru bisa **Reset** password kapan saja (sesi lama siswa langsung dihapus).
+- Tombol **Aktif/Nonaktif** mengubah `is_active`; akun nonaktif ditolak saat login dan
+  sesinya dihapus. **Hapus** menghapus akun permanen (sesi ikut terhapus via cascade).
+- Import massal mendukung **Excel `.xlsx`** dan tetap kompatibel dengan CSV lama
+  (`nama,email`). Kolom yang dikenali: `nomor` (diabaikan), `nama` (wajib), `kelas`,
+  `tahun_ajaran`, `email`. Maks 200 baris / 2 MB.
+- Resolusi kelas saat import: tanpa kelas → `null`; ada `tahun_ajaran` → harus cocok
+  persis nama + tahun; tanpa tahun dan nama kelas unik → dipakai otomatis; nama kelas
+  ganda antar tahun ajaran atau kelas tak dikenal → baris ditolak dengan alasan.
+- Template `.xlsx` diunduh dari `GET /guru/siswa/template` (dibangkitkan `exceljs`):
+  sheet **Data Siswa** (header + dropdown kelas), **Contoh** (tidak ikut diimport), dan
+  **Daftar Kelas** (nama kelas + tahun ajaran tersedia).
+- Hasil import: tabel + unduhan CSV kredensial kini menyertakan kolom `kelas`; baris
+  gagal ditampilkan dengan nomor baris asli file (termasuk nomor baris Excel).
+- **Pratinjau sebelum simpan**: setelah file dipilih, guru menekan **Periksa File** dan
+  melihat tabel hasil pembacaan — nomor baris, nama, kelas yang berhasil dicocokkan,
+  tahun ajaran, email, rencana username, serta status **Siap**/**Gagal** beserta
+  alasannya. Belum ada akun yang dibuat sampai tombol **Import N Akun** ditekan. Setelah
+  itu file divalidasi ulang di server (hasil pratinjau di client tidak dipercaya), jadi
+  yang tersimpan selalu sama dengan yang tampil. Aksi: `previewImportSiswa` (baca saja,
+  tanpa tulis DB) dan `importSiswa`; keduanya memakai `prepareImport` yang sama.
+- Tombol **Ganti file** membatalkan pratinjau dan mengosongkan pilihan file.
+- Server Actions: `src/lib/guru/siswa-actions.ts`; query: `siswa-queries.ts`;
+  utilitas username/CSV: `siswa-utils.ts`; pembaca & pembangun Excel: `siswa-excel.ts`;
+  komponen: `siswa-manager.tsx`, `siswa-row.tsx`, `siswa-import.tsx`,
+  `credential-panel.tsx`.
+- Semua aksi dibatasi `requireUser("guru")` dan hanya menyentuh `role = 'siswa'`.
+- Status: create (dengan kelas), import `.xlsx` (valid, kelas ambigu, kelas tak dikenal,
+  tahun salah, email invalid, nama kosong), backward-compat CSV, edit kelas, filter
+  kelas, hapus kelas → siswa jadi "tanpa kelas", dan unduh template sudah diuji lewat
+  browser; `tsc --noEmit`, `npm run lint`, dan `npm run build` bersih. Data uji dihapus.
+- Diuji ulang pada **build production standalone** (`.next/standalone`, port 3002):
+  tambah/edit/hapus/aktif-nonaktif siswa, reset password, import `.xlsx` (valid, kelas
+  ambigu, kelas tak dikenal, duplikat nama → `nama2`), CSV lama, penolakan `.xls`,
+  unduh template, serta CRUD kelas dan materi — semua lolos 20/20 percobaan beruntun.
+- Zip deploy dibuat: `standalone-2026-11-18.zip` (18,8 MB, 2.990 file) dari
+  `.next/standalone`; diuji dengan **mengekstrak zip ke folder kosong** lalu
+  menjalankan `node server.js` (port 3003) — health `{"status":"ok","db":true}`,
+  template `.xlsx` 11.570 byte (`PK`), dan import 1 baris lewat pratinjau berhasil.
+  Catatan: `NODE_ENV=development` **jangan** dipakai saat build — prerender
+  `/login/siswa` gagal (`Cannot read properties of null (reading 'useContext')`).
+  Biarkan `NODE_ENV` kosong saat `npm run build`.
+- Pratinjau import diuji di dev (port 3001) **dan** build standalone (port 3002):
+  file uji 7 baris menampilkan 3 *Siap* + 4 *Gagal* dengan alasan tepat (kelas `9Z` tak
+  terdaftar, kelas `9A` tidak ada di 2020/2021, nama kosong, email ganda di dalam file),
+  jumlah siswa tetap 1 sebelum **Import**; setelah **Import 3 Akun** akun dibuat dengan
+  kelas benar, daftar langsung berubah 1 → 4, dan CSV pratinjau kembali bersih setelah
+  **Ganti file** / pilih file baru. Data uji dihapus lagi.
+
 ### Status loading saat berpindah halaman
 
 - `NavigationProgress` (`src/components/navigation-progress.tsx`) — bar tipis di atas layar
@@ -88,8 +181,9 @@ lewat `requireUser(role)` yang memvalidasi sesi ke database.
   event `kelasbit:busy` dari `emitBusy()`.
 - Submit form login: tombol berubah jadi spinner + "Memproses…" (disabled), dan
   `emitBusy(true/false)` mengaktifkan indikator tengah sampai Server Action selesai.
-- `loading.tsx` per rute (`/`, `/login`, `/login/siswa`, `/login/guru`, `/siswa`, `/guru`) —
-  skeleton dengan shimmer yang meniru bentuk layout aslinya.
+- `loading.tsx` per rute (`/`, `/login`, `/login/siswa`, `/login/guru`, `/siswa`,
+  `/guru`, `/guru/kelas`, `/guru/siswa`) — skeleton dengan shimmer yang meniru bentuk
+  layout aslinya.
 - `LinkPendingIndicator` — spinner kecil menggantikan ikon panah/tombol saat navigasi
   berlangsung, memakai `useLinkStatus()` dari Next.
 - Semua animasi punya fallback `prefers-reduced-motion`.
@@ -104,8 +198,10 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
 
 1. **Data dashboard siswa masih kosong** — shell dan kartu `/siswa` sudah ada, tetapi materi,
    tugas, jadwal, progress, dan pengumuman belum diisi (masih empty state). Dashboard guru
-   sudah punya CRUD materi; pengelolaan kelas, tugas, dan nilai belum dibuat.
-2. **Belum ada registrasi** — akun hanya lewat `npm run db:seed`.
+   sudah punya CRUD materi dan manajemen kelas; pengelolaan tugas dan nilai belum dibuat.
+   Anggota siswa per kelas serta relasi materi → kelas juga belum ada.
+2. **Belum ada registrasi mandiri** — akun siswa dibuat guru lewat `/guru/siswa`
+   (satu per satu atau import CSV), akun guru masih lewat `npm run db:seed`.
 3. **Belum ada rate limiting pada login.**
 4. **Belum ada fitur lupa password.**
 5. **Sesi lama belum dibersihkan otomatis** — baris kedaluwarsa baru dihapus saat dipakai.
@@ -142,6 +238,12 @@ npm run dev              # jalankan app
 - `npm run deploy:prepare` menyalin `.next/static` (dan `public/` jika ada) ke
   `.next/standalone`, sekaligus menghapus file `.env*` dari bundle. Jangan upload `.env`;
   gunakan **Environment Variables** cPanel.
+- `react`/`react-dom` dipin ke **19.2.9** agar selaras dengan React yang dikompilasi
+  Next 15.5 (19.2.0-canary). Jangan naikkan ke 19.3.x tanpa menaikkan Next juga.
+- **Server Action jangan memakai `revalidatePath`.** Di Next 15.5 respons action bisa
+  menggantung sehingga form `useActionState` pending selamanya. Halaman sudah dinamis
+  (cookie), jadi cukup `router.refresh()` dari client lewat
+  `useRefreshOnSuccess`/`useScheduleRefresh` (`src/components/guru/use-refresh-on-success.ts`).
 
 ## Pelajaran teknis
 
@@ -160,3 +262,13 @@ npm run dev              # jalankan app
   (mis. `Fetch.requestPaused` tanpa dilepas), Next belum merender `loading.tsx`.
 - `event.defaultPrevented` tidak bisa dipakai untuk mendeteksi klik `Link` Next, karena
   Next menandai event lebih dulu. Progress bar akhirnya mendeteksi klik tanpa cek itu.
+- **Bug React 19.2: transisi router kadang tidak pernah commit.** Setelah Server Action,
+  `router.refresh()` bisa selesai 200 dengan payload benar tetapi DOM tidak berubah
+  (React membuang "ping" saat fase render; https://github.com/react/react/issues/37830,
+  diperbaiki di React 19.3). Karena Next 15.5 memakai React 19.2 yang dikompilasi sendiri,
+  kita pakai dua lapis mitigasi: refresh ditunda ±120 ms setelah action selesai, lalu
+  `RouterNudge` (`src/components/router-nudge.tsx`) memicu state update kecil ±700 ms
+  kemudian untuk membangunkan lane yang macet. Tanpa ini kegagalan ±40-50%; dengan
+  keduanya 20/20 percobaan berhasil.
+- **Kredensial import sebaiknya langsung diunduh.** Password hanya dikembalikan sekali
+  dari Server Action; panel/CSV tidak bisa ditampilkan ulang setelah halaman ditutup.

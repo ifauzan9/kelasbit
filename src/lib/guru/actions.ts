@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
@@ -50,7 +49,6 @@ export async function createMateri(
   if (error) return { error };
 
   await getDb().insert(materi).values({ title, description, subject });
-  revalidatePath("/guru");
 
   return { success: true, stamp: Date.now() };
 }
@@ -74,17 +72,20 @@ export async function updateMateri(
     .update(materi)
     .set({ title, description, subject, updatedAt: new Date() })
     .where(eq(materi.id, id));
-  revalidatePath("/guru");
 
   return { success: true, stamp: Date.now() };
 }
 
-export async function deleteMateri(formData: FormData): Promise<void> {
+export async function deleteMateri(
+  _prevState: MateriState,
+  formData: FormData,
+): Promise<MateriState> {
   await requireUser("guru");
 
   const id = parseId(formData.get("id"));
-  if (!id) return;
+  if (!id) return { error: "Materi tidak valid." };
 
   await getDb().delete(materi).where(eq(materi.id, id));
-  revalidatePath("/guru");
+
+  return { success: true, stamp: Date.now() };
 }

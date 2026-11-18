@@ -5,8 +5,20 @@ import { users } from "../src/lib/db/schema.ts";
 import { hashPassword } from "../src/lib/auth/password.ts";
 
 const seedUsers = [
-  { name: "Siswa Demo", email: "siswa@kelasbit.id", role: "siswa", password: "siswa12345" },
-  { name: "Guru Demo", email: "guru@kelasbit.id", role: "guru", password: "guru12345" },
+  {
+    name: "Siswa Demo",
+    email: "siswa@kelasbit.id",
+    username: "siswa",
+    role: "siswa",
+    password: "siswa12345",
+  },
+  {
+    name: "Guru Demo",
+    email: "guru@kelasbit.id",
+    username: null,
+    role: "guru",
+    password: "guru12345",
+  },
 ];
 
 const connectionString = process.env.DATABASE_URL;
@@ -20,11 +32,20 @@ const db = drizzle(pool);
 async function main() {
   for (const item of seedUsers) {
     const [existing] = await db
-      .select({ id: users.id })
+      .select({ id: users.id, username: users.username })
       .from(users)
       .where(eq(users.email, item.email));
 
     if (existing) {
+      if (!existing.username && item.username) {
+        await db
+          .update(users)
+          .set({ username: item.username })
+          .where(eq(users.id, existing.id));
+        console.log(`update ${item.email} → username ${item.username}`);
+        continue;
+      }
+
       console.log(`skip  ${item.email} (sudah ada)`);
       continue;
     }
@@ -32,11 +53,16 @@ async function main() {
     await db.insert(users).values({
       name: item.name,
       email: item.email,
+      username: item.username,
       role: item.role,
       passwordHash: await hashPassword(item.password),
     });
 
-    console.log(`buat  ${item.email} / ${item.password}`);
+    console.log(
+      item.role === "siswa"
+        ? `buat  ${item.username} / ${item.password}`
+        : `buat  ${item.email} / ${item.password}`,
+    );
   }
 }
 

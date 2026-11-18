@@ -22,6 +22,15 @@ html {
   scroll-behavior: smooth;
 }
 
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -80,9 +89,7 @@ html {
   overflow: hidden;
   border-radius: 0.75rem;
   background-color: var(--skeleton-base, #e6e2fb);
-}
-
-.skeleton::after {
+}.skeleton::after {
   content: "";
   position: absolute;
   inset: 0;

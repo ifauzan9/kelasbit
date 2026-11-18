@@ -56,15 +56,32 @@ Kredensial default: user/password/database = `kelasbit`.
 | `src/app/` | App Router (halaman + API routes) |
 | `src/app/api/health/route.ts` | Health check + tes koneksi PostgreSQL |
 | `src/lib/db/index.ts` | Pool `pg` + instance Drizzle (lazy) |
-| `src/lib/db/schema.ts` | Schema Drizzle (tabel `users`, `sessions`, `materi`) |
-| `src/app/(public)/` | Halaman publik: `/`, `/login*`, `/guru` — memakai header/footer situs |
+| `src/lib/db/schema.ts` | Schema Drizzle (tabel `kelas`, `users`, `sessions`, `materi`) |
+| `src/app/(public)/` | Halaman publik: `/`, `/login*` — memakai header/footer situs |
 | `src/app/(dashboard)/` | Area dashboard siswa — memakai shell sidebar + topbar sendiri |
 | `src/app/(dashboard)/siswa/page.tsx` | Dashboard siswa (banner + kartu empty state) |
-| `src/app/(public)/guru/page.tsx` | Dashboard guru (CRUD materi) |
+| `src/app/(guru)/` | Area guru — memakai shell `GuruShell` sendiri |
+| `src/app/(guru)/guru/page.tsx` | Dashboard guru (statistik + CRUD materi) |
+| `src/app/(guru)/guru/kelas/page.tsx` | Manajemen kelas (nama + tahun ajaran) |
+| `src/app/(guru)/guru/siswa/page.tsx` | Manajemen siswa + pembuatan akun login |
+| `src/app/(guru)/guru/siswa/template/route.ts` | Unduh template import `.xlsx` (khusus guru) |
 | `src/lib/guru/actions.ts` | Server Actions CRUD materi: tambah, ubah, hapus |
 | `src/lib/guru/queries.ts` | Query daftar materi |
+| `src/lib/guru/kelas-actions.ts` | Server Actions CRUD kelas: tambah, ubah, hapus |
+| `src/lib/guru/kelas-queries.ts` | Query daftar kelas |
+| `src/lib/guru/siswa-actions.ts` | Server Actions siswa: tambah, ubah, reset password, aktif/nonaktif, hapus, import Excel/CSV |
+| `src/lib/guru/siswa-queries.ts` | Query daftar & jumlah siswa, daftar kelas + jumlah siswa |
+| `src/lib/guru/siswa-utils.ts` | Username dari nama, validasi email, parser CSV, normalisasi tahun ajaran |
+| `src/lib/guru/siswa-excel.ts` | Baca `.xlsx` dan bangun template 3 sheet (butuh `exceljs`) |
 | `src/components/guru/materi-manager.tsx` | Form tambah materi + daftar |
 | `src/components/guru/materi-row.tsx` | Baris materi: edit inline dan hapus |
+| `src/components/guru/kelas-manager.tsx` | Form tambah kelas + daftar per tahun ajaran |
+| `src/components/guru/kelas-row.tsx` | Baris kelas: edit inline dan hapus |
+| `src/components/guru/siswa-manager.tsx` | Form tambah siswa + daftar, pencarian, filter status & kelas |
+| `src/components/guru/siswa-row.tsx` | Baris siswa: edit (termasuk kelas), reset password, aktif/nonaktif, hapus |
+| `src/components/guru/siswa-import.tsx` | Import Excel `.xlsx` / CSV massal + unduh kredensial |
+| `src/components/guru/credential-panel.tsx` | Panel username/password sekali tampil + tombol salin |
+| `src/components/guru/guru-nav.tsx` | Nav guru (menu aktif memakai `usePathname`) |
 | `src/components/dashboard/dashboard-shell.tsx` | Shell dashboard: sidebar nav, topbar, profil, logout |
 | `src/middleware.ts` | Redirect instan untuk halaman terlindungi dan halaman login |
 | `src/components/navigation-progress.tsx` | Bar progres navigasi di atas layar |
@@ -92,13 +109,25 @@ Siswa dan guru punya halaman login serta dashboard terpisah. Sesi disimpan di ta
 `sessions` dan cookie `kelasbit_session` (httpOnly, sameSite `lax`, berlaku 7 hari).
 Password di-hash dengan `scrypt` bawaan Node, jadi tidak ada dependency tambahan.
 
+- **Siswa login memakai `username`** yang dibuat otomatis dari nama (mis. `budi.santoso`;
+  kalau sudah dipakai menjadi `budi.santoso2`). Email siswa opsional.
+- **Guru login memakai email.**
+- Akun siswa bisa dinonaktifkan dari `/guru/siswa`; akun nonaktif tidak bisa login dan
+  sesinya langsung dihapus.
+- Username tidak berubah saat nama siswa diedit.
+- Siswa bisa punya **kelas** (relasi `users.kelas_id` → `kelas.id`). Kalau kelas dihapus,
+  siswanya tetap ada dan menjadi "tanpa kelas" (`ON DELETE SET NULL`).
+
 | Rute | Keterangan |
 | --- | --- |
 | `/login` | Pemilih peran (Siswa / Guru) |
-| `/login/siswa` | Form login siswa |
-| `/login/guru` | Form login guru |
+| `/login/siswa` | Form login siswa (username) |
+| `/login/guru` | Form login guru (email) |
 | `/siswa` | Dashboard siswa — wajib login sebagai siswa |
 | `/guru` | Dashboard guru — wajib login sebagai guru |
+| `/guru/kelas` | Manajemen kelas — wajib login sebagai guru |
+| `/guru/siswa` | Manajemen siswa + akun login — wajib login sebagai guru |
+| `/guru/siswa/template` | Unduh template import siswa `.xlsx` — wajib login sebagai guru |
 | `/sesi` | Route handler yang mengarahkan ke dashboard sesuai role |
 
 Status loading saat berpindah halaman:
@@ -118,7 +147,7 @@ Perilaku:
 - Sudah login → `/login*` dialihkan ke `/sesi`, lalu ke dashboard sesuai role.
 - Role tidak cocok (guru buka `/siswa`) → dialihkan ke `/sesi`, lalu dashboard role-nya.
 - Login di halaman role yang salah → ditolak dengan pesan umum
-  "Email atau password salah." (role akun tidak dibocorkan).
+  "Username atau password salah." / "Email atau password salah." (role akun tidak dibocorkan).
 - Logika ada di `src/lib/auth/` (`password.ts`, `session.ts`, `actions.ts`).
 
 Buat akun demo:
@@ -127,9 +156,9 @@ Buat akun demo:
 npm run db:seed
 ```
 
-| Email | Password | Role |
+| Username / Email | Password | Role |
 | --- | --- | --- |
-| `siswa@kelasbit.id` | `siswa12345` | siswa |
+| `siswa` | `siswa12345` | siswa |
 | `guru@kelasbit.id` | `guru12345` | guru |
 
 ## Deploy ke cPanel
@@ -255,6 +284,9 @@ Buka `https://domainmu/api/health`:
 Buka juga halaman utama dan pastikan UI tampil normal.
 
 ## Update aplikasi
+
+Checklist lengkap sebelum upload fitur baru (termasuk backup DB dan rollback) ada di
+[`DEPLOY.md`](./DEPLOY.md). Ringkasnya:
 
 ```bash
 npm run build

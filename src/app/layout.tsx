@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import { CenterLoading } from "@/components/center-loading";
 import { NavigationProgress } from "@/components/navigation-progress";
+import { RouterNudge } from "@/components/router-nudge";
 import "./globals.css";
 
 const jakarta = Plus_Jakarta_Sans({
@@ -26,6 +27,7 @@ export default function RootLayout({
       >
         <NavigationProgress />
         <CenterLoading />
+        <RouterNudge />
         {children}
       </body>
     </html>

@@ -16,10 +16,11 @@
   },
   "dependencies": {
     "drizzle-orm": "0.45.4",
+    "exceljs": "^4.4.0",
     "next": "15.5.29",
     "pg": "8.23.1",
-    "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react": "19.2.9",
+    "react-dom": "19.2.9"
   },
   "overrides": {
     "postcss": "^8.5.32"
