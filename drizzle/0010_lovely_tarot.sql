@@ -1,0 +1,1 @@
+ALTER TABLE "sessions" ADD COLUMN "maintenance_access" boolean DEFAULT false NOT NULL;

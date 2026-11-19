@@ -14,6 +14,7 @@ import {
   recordLoginFailure,
 } from "@/lib/auth/rate-limit";
 import { getClientInfo } from "@/lib/auth/request-info";
+import { getMaintenanceSetting } from "@/lib/settings/maintenance";
 import {
   cleanupAuthData,
   createSession,
@@ -165,8 +166,13 @@ export async function login(_prevState: LoginState, formData: FormData): Promise
   await clearLoginFailures(identifier);
   await cleanupAuthData();
 
+  const maintenance =
+    role === "siswa" ? await getMaintenanceSetting() : null;
+
   try {
-    await createSession(user.id, role);
+    await createSession(user.id, role, {
+      maintenanceAccess: role === "siswa" && Boolean(maintenance?.enabled),
+    });
   } catch (error) {
     console.error("login: gagal membuat sesi", error);
     return { error: "Layanan sedang tidak tersedia. Coba lagi sebentar." };

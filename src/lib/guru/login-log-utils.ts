@@ -25,7 +25,20 @@ export const LOGIN_REASON_LABELS: Record<LoginLogReason, string> = {
   bukan_akun_siswa: "Bukan akun siswa",
   akun_nonaktif: "Akun nonaktif",
   rate_limit: "Dibatasi rate limit",
+  token_salah: "Token kelas salah",
+  token_nonaktif: "Token kelas nonaktif",
+  kelas_tanpa_siswa: "Kelas tanpa siswa aktif",
+  siswa_tidak_ada: "Siswa tidak ada di kelas",
 };
+
+export const LOGIN_METHOD_LABELS: Record<string, string> = {
+  password: "Password",
+  token_kelas: "Token kelas",
+};
+
+export function loginMethodLabel(value: string): string {
+  return LOGIN_METHOD_LABELS[value] ?? "Password";
+}
 
 export function toLoginStatus(value: string): LoginLogStatus {
   if (value === "gagal" || value === "diblokir") return value;

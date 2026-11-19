@@ -6,6 +6,7 @@ import {
   GuruSectionLabel,
   GuruSidebarNav,
 } from "@/components/guru/guru-nav";
+import { MaintenanceBanner } from "@/components/guru/maintenance-banner";
 import { logout } from "@/lib/auth/actions";
 import type { SessionUser } from "@/lib/auth/session";
 
@@ -20,9 +21,11 @@ function initialsOf(name: string): string {
 
 export function GuruShell({
   user,
+  maintenanceLoginPath,
   children,
 }: {
   user: SessionUser;
+  maintenanceLoginPath?: string | null;
   children: ReactNode;
 }) {
   return (
@@ -130,6 +133,18 @@ export function GuruShell({
                   <span className="block text-xs font-medium text-slate-400">Guru</span>
                 </span>
               </Link>
+
+              <form action={logout} className="lg:hidden">
+                <button
+                  type="submit"
+                  aria-label="Keluar"
+                  title="Keluar"
+                  className="inline-flex h-10 items-center gap-1.5 rounded-xl px-2.5 text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                >
+                  <LogOut className="h-5 w-5" />
+                  <span className="hidden text-xs font-bold sm:inline">Keluar</span>
+                </button>
+              </form>
             </div>
           </div>
 
@@ -137,6 +152,9 @@ export function GuruShell({
         </header>
 
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          {maintenanceLoginPath ? (
+            <MaintenanceBanner loginPath={maintenanceLoginPath} />
+          ) : null}
           {children}
         </main>
       </div>

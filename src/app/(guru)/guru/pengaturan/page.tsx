@@ -1,8 +1,18 @@
 import type { Metadata } from "next";
 import { Settings } from "@/components/icons";
 import { LoginLocationSetting } from "@/components/guru/login-location-setting";
+import { MaintenanceSetting } from "@/components/guru/maintenance-setting";
 import { requireUser } from "@/lib/auth/session";
 import { getLoginLocationSetting } from "@/lib/settings/queries";
+import {
+  formatJakartaDateTime,
+  getMaintenanceSetting,
+  getOrCreateMaintenanceStudentToken,
+  getOrCreateMaintenanceToken,
+  maintenanceLoginPath,
+  maintenanceStudentLoginPath,
+  toJakartaDateTimeInput,
+} from "@/lib/settings/maintenance";
 
 export const metadata: Metadata = {
   title: "Pengaturan — KelasBit",
@@ -11,7 +21,12 @@ export const metadata: Metadata = {
 export default async function PengaturanPage() {
   await requireUser("guru");
 
-  const locationSetting = await getLoginLocationSetting();
+  const [locationSetting, maintenance] = await Promise.all([
+    getLoginLocationSetting(),
+    getMaintenanceSetting(),
+  ]);
+  const tokenInfo = await getOrCreateMaintenanceToken();
+  const studentToken = await getOrCreateMaintenanceStudentToken();
 
   return (
     <>
@@ -41,7 +56,25 @@ export default async function PengaturanPage() {
         </div>
       </section>
 
-      <div className="mt-6 max-w-3xl">
+      <div className="mt-6 grid max-w-3xl gap-6">
+        <MaintenanceSetting
+          enabled={maintenance.enabled}
+          title={maintenance.title}
+          message={maintenance.message}
+          untilValue={
+            maintenance.until ? toJakartaDateTimeInput(maintenance.until) : ""
+          }
+          untilLabel={
+            maintenance.until ? formatJakartaDateTime(maintenance.until) : null
+          }
+          updatedAt={maintenance.updatedAt}
+          expired={maintenance.expired}
+          envControlled={maintenance.envControlled}
+          loginPath={maintenanceLoginPath(tokenInfo.token)}
+          studentLoginPath={maintenanceStudentLoginPath(studentToken)}
+          tokenSource={tokenInfo.source}
+        />
+
         <LoginLocationSetting
           enabled={locationSetting.enabled}
           updatedAt={locationSetting.updatedAt}

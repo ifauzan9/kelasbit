@@ -15,12 +15,7 @@ export default async function KelasPage() {
 
   const rows = await listKelas();
 
-  const kelas = rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    academicYear: row.academicYear,
-    studentCount: row.studentCount,
-  }));
+  const kelas = rows;
 
   const total = rows.length;
   const latestYear = rows[0]?.academicYear ?? "—";

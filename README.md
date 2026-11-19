@@ -67,6 +67,8 @@ Kredensial default: user/password/database = `kelasbit`.
 | `src/app/(guru)/guru/siswa/template/route.ts` | Unduh template import `.xlsx` (khusus guru) |
 | `src/app/(guru)/guru/log-login/page.tsx` | Log login siswa: statistik, filter, pencarian, pagination, lokasi |
 | `src/app/(guru)/guru/pengaturan/page.tsx` | Pengaturan aplikasi: toggle lacak lokasi login siswa |
+| `src/app/siswa-masuk/[token]/page.tsx` | Login siswa khusus saat maintenance (token kelas / password) |
+| `src/app/maintenance/page.tsx` | Halaman publik saat mode maintenance |
 | `src/app/(dashboard)/siswa/profil/page.tsx` | Profil siswa: info akun, edit profil, keamanan |
 | `src/app/(guru)/guru/profil/page.tsx` | Profil guru: info akun, edit profil, keamanan |
 | `src/lib/akun/actions.ts` | Server Actions profil: update profil, ganti password, logout semua perangkat |
@@ -74,6 +76,10 @@ Kredensial default: user/password/database = `kelasbit`.
 | `src/components/akun/` | Komponen ringkasan profil, form edit, dan form keamanan |
 | `src/lib/auth/rate-limit.ts` | Rate limiting login berbasis tabel `login_attempts` |
 | `src/lib/auth/login-log.ts` | Pencatatan & cleanup riwayat login siswa (tabel `login_logs`) |
+| `src/lib/auth/kelas-token-format.ts` | Normalisasi/format token kelas (aman untuk client) |
+| `src/lib/auth/kelas-token.ts` | Generator token acak kelas |
+| `src/lib/auth/token-actions.ts` | Server Actions cari kelas + login dengan token kelas |
+| `src/lib/auth/use-login-finish.ts` | Hook penyelesaian login (lokasi + redirect) |
 | `src/lib/auth/request-info.ts` | Ambil IP dan User-Agent dari header request |
 | `src/lib/guru/login-log-queries.ts` | Query log login: filter, pagination, statistik |
 | `src/lib/guru/login-log-utils.ts` | Format status/alasan, lokasi, waktu WIB, dan User-Agent |
@@ -87,8 +93,8 @@ Kredensial default: user/password/database = `kelasbit`.
 | `src/components/guru/login-location-setting.tsx` | Kartu switch lacak lokasi login |
 | `src/lib/guru/actions.ts` | Server Actions CRUD materi: tambah, ubah, hapus |
 | `src/lib/guru/queries.ts` | Query daftar materi |
-| `src/lib/guru/kelas-actions.ts` | Server Actions CRUD kelas: tambah, ubah, hapus |
-| `src/lib/guru/kelas-queries.ts` | Query daftar kelas |
+| `src/lib/guru/kelas-actions.ts` | Server Actions CRUD kelas + token login kelas |
+| `src/lib/guru/kelas-queries.ts` | Query daftar kelas (termasuk status token) |
 | `src/lib/guru/siswa-actions.ts` | Server Actions siswa: tambah, ubah, reset password, aktif/nonaktif, hapus, import Excel/CSV |
 | `src/lib/guru/siswa-queries.ts` | Query daftar & jumlah siswa, daftar kelas + jumlah siswa |
 | `src/lib/guru/siswa-utils.ts` | Username dari nama, validasi email, parser CSV, normalisasi tahun ajaran |
@@ -96,7 +102,10 @@ Kredensial default: user/password/database = `kelasbit`.
 | `src/components/guru/materi-manager.tsx` | Form tambah materi + daftar |
 | `src/components/guru/materi-row.tsx` | Baris materi: edit inline dan hapus |
 | `src/components/guru/kelas-manager.tsx` | Form tambah kelas + daftar per tahun ajaran |
-| `src/components/guru/kelas-row.tsx` | Baris kelas: edit inline dan hapus |
+| `src/components/guru/kelas-row.tsx` | Baris kelas: edit inline, hapus, panel token login |
+| `src/components/guru/kelas-token-panel.tsx` | Kelola token login kelas: on/off, salin, ganti, hapus |
+| `src/components/siswa-login-tabs.tsx` | Tab login siswa: username/password atau token kelas |
+| `src/components/login-token-form.tsx` | Form token kelas + pilih nama siswa |
 | `src/components/guru/siswa-manager.tsx` | Form tambah siswa + daftar, pencarian, filter status & kelas |
 | `src/components/guru/siswa-row.tsx` | Baris siswa: edit (termasuk kelas), reset password, aktif/nonaktif, hapus |
 | `src/components/guru/siswa-import.tsx` | Import Excel `.xlsx` / CSV massal + unduh kredensial |
@@ -133,6 +142,15 @@ Password di-hash dengan `scrypt` bawaan Node, jadi tidak ada dependency tambahan
 
 - **Siswa login memakai `username`** yang dibuat otomatis dari nama (mis. `budi.santoso`;
   kalau sudah dipakai menjadi `budi.santoso2`). Email siswa opsional.
+- **Login token kelas**: guru mengaktifkan token per kelas di `/guru/kelas`. Siswa membuka
+  tab **Token Kelas** di `/login/siswa`, memasukkan token, lalu memilih namanya dari daftar
+  siswa aktif kelas tersebut. Token 6 karakter (tanpa huruf/angka ambigu), bisa diganti
+  atau dihapus kapan saja. Login username + password tetap tersedia.
+  Karena token dipakai bersama, siswa yang tahu token bisa memilih nama temannya — guru
+  perlu mengganti token bila bocor.
+- **Saat mode maintenance**, siswa bisa login lewat `/siswa-masuk/<token>` memakai token
+  kelas atau username/password. Sesi itu mendapat akses sementara ke `/siswa*`; sesi
+  siswa lama harus login ulang. URL khusus ini dikelola guru di `/guru/pengaturan`.
 - **Guru login memakai email.** Saat ini hanya ada satu akun guru (dibuat lewat
   `npm run db:seed`); belum ada UI untuk menambah akun guru lain.
 - Akun siswa bisa dinonaktifkan dari `/guru/siswa`; akun nonaktif tidak bisa login dan
@@ -149,8 +167,9 @@ Password di-hash dengan `scrypt` bawaan Node, jadi tidak ada dependency tambahan
   (tabel `login_attempts`, identifier & IP di-hash). Login berhasil membersihkan catatan
   akun tersebut.
 - Percobaan login siswa dicatat di tabel `login_logs` (berhasil, gagal, dan diblokir)
-  lengkap dengan nama/kelas snapshot, IP, dan User-Agent. Guru bisa melihatnya di
-  `/guru/log-login` dengan filter status/kelas/periode dan pagination.
+  lengkap dengan nama/kelas snapshot, IP, User-Agent, dan metode login
+  (password/token kelas). Guru bisa melihatnya di `/guru/log-login` dengan filter
+  status/kelas/periode dan pagination.
 - Log login lebih lama dari **90 hari** dibersihkan otomatis. Riwayat mulai terkumpul
   setelah fitur dipasang; tidak ada backfill login lama.
 - Guru bisa mengaktifkan/menonaktifkan **lacak lokasi login siswa** di
@@ -166,8 +185,11 @@ Password di-hash dengan `scrypt` bawaan Node, jadi tidak ada dependency tambahan
 | Rute | Keterangan |
 | --- | --- |
 | `/login` | Pemilih peran (Siswa / Guru) |
-| `/login/siswa` | Form login siswa (username) |
+| `/login/siswa` | Form login siswa (username/password atau token kelas) |
 | `/login/guru` | Form login guru (email) |
+| `/maintenance` | Halaman publik saat mode maintenance aktif |
+| `/guru-masuk/<token>` | Login guru khusus saat maintenance (URL rahasia) |
+| `/siswa-masuk/<token>` | Login siswa khusus saat maintenance (token kelas atau username/password) |
 | `/siswa` | Dashboard siswa — wajib login sebagai siswa |
 | `/guru` | Dashboard guru — wajib login sebagai guru |
 | `/guru/kelas` | Manajemen kelas — wajib login sebagai guru |

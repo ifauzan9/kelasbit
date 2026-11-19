@@ -10,6 +10,8 @@ export type KelasView = {
   id: number;
   name: string;
   academicYear: string;
+  loginToken: string | null;
+  tokenLoginEnabled: boolean;
   studentCount: number;
 };
 

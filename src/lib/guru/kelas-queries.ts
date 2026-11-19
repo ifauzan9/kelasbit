@@ -8,10 +8,18 @@ export async function listKelas() {
       id: kelas.id,
       name: kelas.name,
       academicYear: kelas.academicYear,
+      loginToken: kelas.loginToken,
+      tokenLoginEnabled: kelas.tokenLoginEnabled,
       studentCount: sql<number>`count(${users.id})::int`,
     })
     .from(kelas)
     .leftJoin(users, sql`${users.kelasId} = ${kelas.id} and ${users.role} = 'siswa'`)
-    .groupBy(kelas.id, kelas.name, kelas.academicYear)
+    .groupBy(
+      kelas.id,
+      kelas.name,
+      kelas.academicYear,
+      kelas.loginToken,
+      kelas.tokenLoginEnabled,
+    )
     .orderBy(desc(kelas.academicYear), asc(kelas.name));
 }

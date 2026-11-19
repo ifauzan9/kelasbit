@@ -36,12 +36,16 @@ Terakhir diperbarui: 19 November 2026
 | --- | --- |
 | `/` | Landing page |
 | `/login` | Pemilih peran (Siswa / Guru) |
-| `/login/siswa` | Form login siswa |
+| `/login/siswa` | Form login siswa (username/password atau token kelas) |
 | `/login/guru` | Form login guru |
 | `/siswa` | Dashboard siswa (wajib login sebagai siswa) |
 | `/guru` | Dashboard guru (wajib login sebagai guru) |
-| `/guru/kelas` | Manajemen kelas (wajib login sebagai guru) |
+| `/guru/kelas` | Manajemen kelas + token login (wajib login sebagai guru) |
 | `/guru/siswa` | Manajemen siswa + akun login (wajib login sebagai guru) |
+| `/guru/pengaturan` | Pengaturan aplikasi (wajib login sebagai guru) |
+| `/maintenance` | Halaman publik saat mode maintenance aktif |
+| `/guru-masuk/<token>` | Login guru khusus saat maintenance (URL rahasia) |
+| `/siswa-masuk/<token>` | Login siswa khusus saat maintenance (token kelas atau username/password) |
 | `/sesi` | Route handler: arahkan ke dashboard sesuai role (dipakai middleware) |
 | `/api/health` | Health check + tes koneksi DB |
 
@@ -69,6 +73,8 @@ lewat `requireUser(role)` yang memvalidasi sesi ke database.
   Jadwal Hari Ini, Progress Belajar, dan Pengumuman. Belum ada data contoh.
 - Skeleton `src/app/(dashboard)/siswa/loading.tsx` meniru banner + grid kartu.
 - Responsif: sidebar penuh di desktop, nav horizontal yang bisa di-scroll di mobile.
+- Tombol **Keluar** tersedia di topbar mobile (ikon saja di layar sempit, ikon + teks
+  mulai `sm`) pada shell siswa dan guru; tombol di sidebar tetap ada untuk desktop.
 
 ### CRUD materi (dashboard guru)
 
@@ -267,6 +273,50 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   `{"status":"ok","db":true}`, halaman `/guru/log-login` tampil (empty state), dan login
   siswa lewat build standalone tercatat di `login_logs`.
 
+### Login token kelas (siswa)
+
+- Migration `drizzle/0009_loud_mongu.sql` (additive, tanpa `DROP`):
+  - `kelas.login_token` (unik, nullable), `kelas.token_login_enabled` (default `false`),
+    `kelas.token_updated_at`;
+  - `login_logs.method` (default `'password'`) untuk membedakan metode login.
+- Token: 6 karakter uppercase dari alphabet tanpa huruf/angka ambigu (`I/O/0/1`).
+  Input siswa tidak peka huruf besar/kecil, spasi, atau tanda hubung (`FJA-6NE`).
+  Disimpan plaintext karena guru perlu menampilkannya kembali.
+- Pengelolaan di `/guru/kelas` (per kelas, tombol **Token**):
+  - switch **Aktif/Nonaktif** (menyalakan tanpa token akan membuat token otomatis);
+  - tampilkan + **Salin** token;
+  - **Ganti token** (token lama langsung mati) dan **Hapus token**
+    (sekaligus menonaktifkan login token);
+  - badge **Token aktif** di baris kelas.
+- Login siswa (`/login/siswa`):
+  - tab **Username** (login lama, tetap ada) dan **Token Kelas**;
+  - langkah 1: masukkan token → server memvalidasi (rate limit per IP) dan
+    mengembalikan nama kelas + daftar **siswa aktif** saja;
+  - langkah 2: pilih nama → server memvalidasi ulang token + siswa (kelas sama,
+    role siswa, aktif), lalu membuat sesi;
+  - alur lacak lokasi dan redirect memakai hook `useLoginFinish` yang sama dengan
+    login password.
+- Keamanan & edge case:
+  - token nonaktif, token salah, kelas tanpa siswa aktif, siswa nonaktif, dan
+    maintenance ditolak dengan pesan masing-masing;
+  - token tidak ditulis mentah di log: identifier `token kelas (<nama kelas>)`;
+  - karena token dipakai bersama, siswa yang tahu token bisa memilih nama teman
+    (impersonasi). Guru bisa mengganti/menghapus token kapan saja.
+- Log login menampilkan badge metode **Password** / **Token kelas**, dengan alasan
+  baru: `token_salah`, `token_nonaktif`, `kelas_tanpa_siswa`, `siswa_tidak_ada`.
+- File utama: `src/lib/auth/kelas-token.ts`, `kelas-token-format.ts`,
+  `token-actions.ts`, `use-login-finish.ts`,
+  `src/components/login-token-form.tsx`, `siswa-login-tabs.tsx`,
+  `src/components/guru/kelas-token-panel.tsx`, `kelas-row.tsx`,
+  `src/lib/guru/kelas-actions.ts`, `kelas-queries.ts`.
+- Status: diuji lewat browser — token dibuat/diaktifkan, login dengan token
+  (input lowercase + tanda hubung) menampilkan roster 3 siswa, pilih nama →
+  dashboard siswa, log `berhasil` dengan metode token kelas; token salah ditolak;
+  token dinonaktifkan ditolak; token lama setelah **Ganti token** ditolak dan token
+  baru berhasil; siswa nonaktif hilang dari roster; **Hapus token** mengosongkan
+  token; login username/password tetap berjalan. Data uji (token, sesi, log token)
+  sudah dihapus. `tsc --noEmit`, `npm run lint`, dan `npm run build` bersih.
+
 ### Lacak lokasi login siswa
 
 - Migration `drizzle/0008_clear_marvel_zombies.sql` (additive, tanpa `DROP`) menambah
@@ -311,6 +361,62 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   uji sudah dihapus dari DB lokal. `tsc --noEmit`, `npm run lint`, dan `npm run build`
   bersih. Build standalone diuji di port 3002: `/api/health` OK, `/guru/pengaturan`
   tampil default nonaktif, dan halaman `/guru/log-login` menampilkan badge nonaktif.
+
+### Mode maintenance
+
+- Pengaturan disimpan di `app_settings` (`maintenance_mode`, `maintenance_title`,
+  `maintenance_message`, `maintenance_until`, `maintenance_guru_token`,
+  `maintenance_siswa_token`). Migration `0010_lovely_tarot.sql` menambah
+  `sessions.maintenance_access` (additive).
+- Kartu **Mode Maintenance** di `/guru/pengaturan`:
+  - switch aktif/nonaktif, judul halaman, pesan, dan **buka otomatis pada (WIB)**
+    opsional (disimpan sebagai ISO UTC, input dibaca sebagai Asia/Jakarta +07:00);
+  - status efektif, waktu terakhir diubah, serta peringatan bila jadwal sudah lewat;
+  - URL login **guru** dan URL login **siswa** + tombol salin dan **Ganti URL**.
+- Saat aktif:
+  - `(public)` layout → `/maintenance` (landing, `/login`, `/login/siswa`);
+  - `/login/guru` biasa ditutup → `/maintenance`;
+  - area `/guru/*` tetap terbuka untuk guru;
+  - area siswa hanya terbuka untuk sesi yang login lewat `/siswa-masuk/<token>`
+    (`sessions.maintenance_access = true`); sesi siswa lama tetap → `/maintenance`;
+  - `/api/health` tetap bisa diakses.
+- Login guru saat maintenance hanya lewat `/guru-masuk/<token>` (24 byte acak,
+  base64url). Token salah → 404, halaman `noindex`, dan redirect ke `/login/guru`
+  bila maintenance sudah nonaktif. Guru yang sudah punya sesi langsung ke `/guru`.
+- Login siswa saat maintenance lewat `/siswa-masuk/<token-maintenance-siswa>`:
+  - tersedia dua metode: **Token Kelas** (token kelas → pilih nama) dan
+    **Username & Password**;
+  - sesi yang dibuat diberi `maintenance_access = true` sehingga bisa membuka
+    `/siswa` dan `/siswa/profil`;
+  - halaman biasa `/login/siswa` tetap tertutup;
+  - token salah → 404, `noindex`, maintenance nonaktif → redirect `/login/siswa`.
+- Saat status maintenance berubah (nyala/mati), flag `maintenance_access` semua sesi
+  di-reset agar akses maintenance tidak terbawa ke periode berikutnya.
+- Halaman `/maintenance` di luar route group (tanpa header/footer situs), judul +
+  pesan kustom, perkiraan selesai + hitung mundur bila dijadwalkan, dan **tanpa
+  tautan login apa pun**. Balasan HTTP 200 dengan `noindex` (App Router tidak bisa
+  mengeset 503 dari layout).
+- Buka otomatis dicek saat request — tanpa cron. `maintenance_until` yang lewat
+  membuat status efektif nonaktif, dan kartu pengaturan menandainya.
+- Override cPanel: `MAINTENANCE_MODE`, `MAINTENANCE_GURU_TOKEN`,
+  `MAINTENANCE_TITLE`, `MAINTENANCE_MESSAGE` (env mengalahkan DB; perlu Restart).
+  Token env < 16 karakter diabaikan. Prosedur pemulihan ada di `DEPLOY.md`.
+- Fail-open: kalau `app_settings` gagal dibaca dan env tidak memaksa, maintenance
+  dianggap nonaktif supaya situs tidak salah terkunci.
+- File utama: `src/lib/settings/maintenance.ts`,
+  `maintenance-constants.ts`, `actions.ts`, `src/lib/auth/session.ts`,
+  `src/components/guru/maintenance-setting.tsx`,
+  `maintenance-banner.tsx`, `src/components/maintenance-countdown.tsx`,
+  `src/app/maintenance/page.tsx`, `src/app/siswa-masuk/*`,
+  `src/app/(guru-login)/*`.
+- Status: diuji — `/login/siswa` tertutup saat maintenance; `/siswa-masuk/<token>`
+  menampilkan dua tab; login password dari halaman itu berhasil dan membuka
+  dashboard; login token kelas juga berhasil; sesi siswa lama (flag `false`) tetap
+  dialihkan ke `/maintenance`; URL siswa salah → 404; **Ganti URL** membuat URL lama
+  404 dan URL baru bekerja; saat maintenance dimatikan, flag semua sesi ter-reset dan
+  `/siswa-masuk/<token>` redirect ke `/login/siswa`. `tsc --noEmit`, `npm run lint`,
+  dan `npm run build` bersih; build standalone diuji (`/siswa-masuk/<token>` 200,
+  token salah 404, `/login/siswa` 307 ke `/maintenance`). Data uji sudah dihapus.
 
 ### Deploy produksi (19 November 2026)
 
@@ -389,8 +495,23 @@ npm run dev              # jalankan app
   tabel itu (fail-open), tetapi halaman log akan error sampai migration diterapkan.
 - **Lacak lokasi butuh HTTPS dan izin browser.** Koordinat berasal dari client dan bisa
   dimanipulasi; jangan jadikan satu-satunya bukti. Default toggle **nonaktif** dan
-  disimpan di `app_settings`; setting dibaca saat login berhasil, jadi halaman
-  `/login/siswa` tetap static. Lokasi hanya disimpan pada login berhasil.
+  disimpan di `app_settings`; setting dibaca saat login berhasil. Lokasi hanya disimpan
+  pada login berhasil.
+- **Token kelas bersifat bersama.** Siapa pun yang tahu token bisa memilih nama siswa lain
+  di kelas yang sama, sehingga log dan lokasi bisa tercatat atas nama orang lain. Ganti
+  atau hapus token bila bocor. Token disimpan plaintext di `kelas.login_token` karena guru
+  perlu menampilkannya kembali.
+- **Login token kelas butuh migration `0009`.** Tanpa kolom `kelas.login_token`,
+  `kelas.token_login_enabled`, dan `login_logs.method`, halaman `/guru/kelas` dan
+  `/guru/log-login` akan error.
+- **Halaman login siswa saat maintenance butuh migration `0010`.** Kolom
+  `sessions.maintenance_access` menentukan sesi mana yang boleh membuka area siswa
+  selama maintenance. Flag ini di-reset setiap status maintenance berubah; sesi lama
+  harus login ulang lewat `/siswa-masuk/<token>`.
+- **Login password siswa saat maintenance diizinkan.** Halaman `/login/siswa` tetap
+  tertutup, tetapi Server Action `login` tidak lagi menolak; sesi yang dibuat saat
+  maintenance mendapat flag akses. Maintenance bukan batas keamanan keras — kredensial
+  (password/token kelas) tetap penentu.
 - **Penyimpanan lokasi memakai route API, bukan Server Action di halaman login.**
   Setelah login berhasil, cookie sesi sudah aktif; Server Action yang dipanggil dari
   `/login/siswa` akan di-redirect middleware ke `/sesi` dan berakhir `405`. Karena itu

@@ -17,11 +17,17 @@ export const kelas = pgTable(
     id: serial("id").primaryKey(),
     name: varchar("name", { length: 40 }).notNull(),
     academicYear: varchar("academic_year", { length: 9 }).notNull(),
+    /** Token login bersama untuk satu kelas (uppercase, tanpa karakter ambigu). */
+    loginToken: varchar("login_token", { length: 16 }),
+    /** Guru bisa menyalakan/mematikan login token tanpa menghapus tokennya. */
+    tokenLoginEnabled: boolean("token_login_enabled").notNull().default(false),
+    tokenUpdatedAt: timestamp("token_updated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex("kelas_name_academic_year_idx").on(table.name, table.academicYear),
+    uniqueIndex("kelas_login_token_idx").on(table.loginToken),
   ],
 );
 
@@ -49,6 +55,8 @@ export const sessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /** Sesi siswa yang login lewat halaman khusus saat maintenance. */
+    maintenanceAccess: boolean("maintenance_access").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("sessions_user_id_idx").on(table.userId)],
@@ -77,12 +85,18 @@ export const loginAttempts = pgTable(
 
 export type LoginLogStatus = "berhasil" | "gagal" | "diblokir";
 
+export type LoginLogMethod = "password" | "token_kelas";
+
 export type LoginLogReason =
   | "password_salah"
   | "akun_tidak_ditemukan"
   | "bukan_akun_siswa"
   | "akun_nonaktif"
-  | "rate_limit";
+  | "rate_limit"
+  | "token_salah"
+  | "token_nonaktif"
+  | "kelas_tanpa_siswa"
+  | "siswa_tidak_ada";
 
 /**
  * Riwayat percobaan login siswa (berhasil, gagal, dan diblokir).
@@ -98,6 +112,8 @@ export const loginLogs = pgTable(
     identifier: varchar("identifier", { length: 255 }).notNull(),
     role: varchar("role", { length: 20 }).notNull().default("siswa"),
     status: varchar("status", { length: 20 }).notNull(),
+    /** Metode login: password biasa atau token kelas. */
+    method: varchar("method", { length: 20 }).notNull().default("password"),
     reason: varchar("reason", { length: 40 }),
     kelasName: varchar("kelas_name", { length: 40 }),
     academicYear: varchar("academic_year", { length: 9 }),

@@ -5,10 +5,12 @@ import {
   AlertCircle,
   CalendarDays,
   GraduationCap,
+  KeyRound,
   Pencil,
   Trash2,
   UserRound,
 } from "@/components/icons";
+import { KelasTokenPanel } from "@/components/guru/kelas-token-panel";
 import { useRefreshOnSuccess } from "@/components/guru/use-refresh-on-success";
 import { deleteKelas, updateKelas, type KelasState } from "@/lib/guru/kelas-actions";
 import type { KelasView } from "@/lib/guru/types";
@@ -42,6 +44,7 @@ export function KelasRow({
   academicYears: string[];
 }) {
   const [editing, setEditing] = useState(false);
+  const [showToken, setShowToken] = useState(false);
   const [state, formAction, pending] = useActionState(updateKelas, initialState);
   const [deleteState, deleteAction, deletePending] = useActionState(
     deleteKelas,
@@ -152,40 +155,67 @@ export function KelasRow({
   }
 
   return (
-    <li className="group flex items-start gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-[0_1px_2px_rgba(16,12,40,0.04)] transition hover:border-emerald-200 hover:shadow-[0_16px_36px_-28px_rgba(16,12,40,0.35)]">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
-        <GraduationCap className="h-5 w-5" />
-      </span>
+    <li className="group rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-[0_1px_2px_rgba(16,12,40,0.04)] transition hover:border-emerald-200 hover:shadow-[0_16px_36px_-28px_rgba(16,12,40,0.35)]">
+      <div className="flex items-start gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
+          <GraduationCap className="h-5 w-5" />
+        </span>
 
-      <div className="min-w-0 flex-1">
-        <h3 className="truncate text-sm font-extrabold text-slate-900">{kelas.name}</h3>
-        <div className="mt-1 flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-100">
-            <CalendarDays className="h-3 w-3" />
-            {kelas.academicYear}
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-600">
-            <UserRound className="h-3 w-3" />
-            {kelas.studentCount} siswa
-          </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-sm font-extrabold text-slate-900">{kelas.name}</h3>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-100">
+              <CalendarDays className="h-3 w-3" />
+              {kelas.academicYear}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-600">
+              <UserRound className="h-3 w-3" />
+              {kelas.studentCount} siswa
+            </span>
+            {kelas.tokenLoginEnabled ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100">
+                <KeyRound className="h-3 w-3" />
+                Token aktif
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setShowToken((value) => !value)}
+            aria-expanded={showToken}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+          >
+            <KeyRound className="h-4 w-4" />
+            <span className="hidden sm:inline">Token</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+          >
+            <Pencil className="h-4 w-4" />
+            <span className="hidden sm:inline">Edit</span>
+          </button>
+
+          <form action={deleteAction}>
+            <input type="hidden" name="id" value={kelas.id} />
+            <DeleteButton pending={deletePending} confirm={deleteConfirm} />
+          </form>
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-        >
-          <Pencil className="h-4 w-4" />
-          <span className="hidden sm:inline">Edit</span>
-        </button>
-
-        <form action={deleteAction}>
-          <input type="hidden" name="id" value={kelas.id} />
-          <DeleteButton pending={deletePending} confirm={deleteConfirm} />
-        </form>
-      </div>
+      {showToken ? (
+        <KelasTokenPanel
+          kelasId={kelas.id}
+          kelasName={kelas.name}
+          token={kelas.loginToken}
+          enabled={kelas.tokenLoginEnabled}
+        />
+      ) : null}
     </li>
   );
 }

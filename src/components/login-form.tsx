@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { login, type LoginState } from "@/lib/auth/actions";
-import { detectBrowserLocation } from "@/lib/auth/geolocation-client";
+import { useLoginFinish } from "@/lib/auth/use-login-finish";
 import { emitBusy } from "@/lib/hooks/use-navigation-pending";
 import type { Role } from "@/lib/db/schema";
 
@@ -17,11 +17,9 @@ export function LoginForm({ role }: LoginFormProps) {
   // Form action React 19 mereset input tak-terkontrol setelah submit. Identifier
   // dibuat terkontrol supaya tidak hilang saat login gagal.
   const [identifier, setIdentifier] = useState("");
-  const [locating, setLocating] = useState(false);
-  const handledStampRef = useRef<number | null>(null);
+  const { locating, finishing } = useLoginFinish(state);
 
   const isGuru = role === "guru";
-  const finishing = Boolean(state.success && state.redirectTo);
   const busy = pending || locating || finishing;
 
   useEffect(() => {
@@ -31,48 +29,6 @@ export function LoginForm({ role }: LoginFormProps) {
     emitBusy(true);
     return () => emitBusy(false);
   }, [pending]);
-
-  useEffect(() => {
-    if (!state.success || !state.stamp || !state.redirectTo) return;
-    if (handledStampRef.current === state.stamp) return;
-
-    handledStampRef.current = state.stamp;
-
-    const redirectTo = state.redirectTo;
-    const loginLogId = state.loginLogId;
-    const needsLocation = state.needsLocation;
-
-    async function finish() {
-      if (needsLocation && loginLogId) {
-        setLocating(true);
-
-        try {
-          const location = await detectBrowserLocation({
-            promptTimeoutMs: 30_000,
-            grantedTimeoutMs: 15_000,
-          });
-
-          const response = await fetch("/api/login-location", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ logId: loginLogId, location }),
-          });
-
-          if (!response.ok) {
-            throw new Error(`Gagal menyimpan lokasi (${response.status}).`);
-          }
-        } catch (error) {
-          console.error("login: gagal menyimpan lokasi", error);
-        } finally {
-          setLocating(false);
-        }
-      }
-
-      window.location.replace(redirectTo);
-    }
-
-    void finish();
-  }, [state]);
 
   return (
     <form action={formAction} className="space-y-5">

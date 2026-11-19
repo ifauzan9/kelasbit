@@ -34,6 +34,7 @@ export type LoginLogRow = {
   userName: string | null;
   identifier: string;
   status: LoginLogStatus;
+  method: string;
   reason: string | null;
   kelasName: string | null;
   academicYear: string | null;
@@ -119,6 +120,7 @@ export async function listLoginLogs(filter: LoginLogFilter): Promise<LoginLogRes
       userName: loginLogs.userName,
       identifier: loginLogs.identifier,
       status: loginLogs.status,
+      method: loginLogs.method,
       reason: loginLogs.reason,
       kelasName: loginLogs.kelasName,
       academicYear: loginLogs.academicYear,

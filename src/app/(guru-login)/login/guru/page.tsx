@@ -5,6 +5,10 @@ import { LoginForm } from "@/components/login-form";
 
 export const metadata: Metadata = {
   title: "Login Guru — KelasBit",
+  robots: {
+    index: false,
+    follow: false,
+  },
 };
 
 export default function LoginGuruPage() {

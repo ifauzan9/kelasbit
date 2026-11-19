@@ -134,6 +134,18 @@ export function DashboardShell({
                   <span className="block text-xs font-medium text-slate-400">Siswa</span>
                 </span>
               </Link>
+
+              <form action={logout} className="lg:hidden">
+                <button
+                  type="submit"
+                  aria-label="Keluar"
+                  title="Keluar"
+                  className="inline-flex h-10 items-center gap-1.5 rounded-xl px-2.5 text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                >
+                  <LogOut className="h-5 w-5" />
+                  <span className="hidden text-xs font-bold sm:inline">Keluar</span>
+                </button>
+              </form>
             </div>
           </div>
 

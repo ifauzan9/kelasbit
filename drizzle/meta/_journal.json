@@ -64,6 +64,20 @@
       "when": 1795053286767,
       "tag": "0008_clear_marvel_zombies",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795094272801,
+      "tag": "0009_loud_mongu",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795096490600,
+      "tag": "0010_lovely_tarot",
+      "breakpoints": true
     }
   ]
 }

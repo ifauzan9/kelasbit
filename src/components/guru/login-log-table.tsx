@@ -13,6 +13,7 @@ import {
   formatLoginTime,
   formatUserAgent,
   locationStatusLabel,
+  loginMethodLabel,
   LOGIN_STATUS_LABELS,
   LOGIN_STATUS_STYLES,
   mapUrlFor,
@@ -133,6 +134,9 @@ export function LoginLogTable({
                   <p className="truncate font-mono text-[11px] font-medium text-slate-400">
                     {row.identifier}
                   </p>
+                  <span className="mt-1 inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">
+                    {loginMethodLabel(row.method)}
+                  </span>
                 </div>
               </div>
 

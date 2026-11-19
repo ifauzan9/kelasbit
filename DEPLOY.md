@@ -258,3 +258,105 @@ npm run build
 npm run deploy:prepare
 # zip isi .next/standalone → upload → extract → Restart
 ```
+
+---
+
+## 9. Mode maintenance (produksi)
+
+Fitur ini memakai `app_settings` dan **satu migration additive**:
+`drizzle/0010_lovely_tarot.sql` menambah `sessions.maintenance_access`.
+
+### Mengaktifkan dari aplikasi
+
+1. Login guru → `/guru/pengaturan` → kartu **Mode Maintenance**.
+2. **Salin dua URL** dan simpan di tempat aman:
+   - URL login **guru** (`/guru-masuk/<token>`)
+   - URL login **siswa** (`/siswa-masuk/<token>`)
+   Halaman maintenance publik sengaja tidak menautkan keduanya.
+3. Isi judul & pesan bila perlu, atur **Buka otomatis pada (WIB)** kalau mau.
+4. Nyalakan switch → **Simpan pengaturan**.
+
+Selama aktif:
+- `/`, `/login`, `/login/siswa`, dan `/login/guru` biasa dialihkan ke `/maintenance`;
+- guru tetap bisa login lewat `/guru-masuk/<token>` dan mengakses `/guru*`;
+- siswa bisa login lewat `/siswa-masuk/<token>` memakai **token kelas** atau
+  **username & password**; sesi itu mendapat akses ke `/siswa*`;
+- sesi siswa lama (dibuat sebelum maintenance) tetap dialihkan ke `/maintenance`.
+  Siswa perlu login ulang lewat URL khusus.
+
+Setiap status maintenance berubah (nyala/mati), flag akses maintenance semua sesi
+di-reset. Jadwal buka otomatis dicek saat request (tanpa cron): begitu waktu WIB
+yang dijadwalkan lewat, situs kembali normal sendiri.
+
+### Kalau lupa URL login guru
+
+1. **Sesi guru masih aktif (7 hari):** buka `/guru/pengaturan` atau dashboard guru —
+   URL ditampilkan di kartu Maintenance / banner kuning, lengkap dengan tombol salin.
+2. **Lewat Environment Variables cPanel** (*Setup Node.js App* → Environment Variables):
+   - `MAINTENANCE_GURU_TOKEN=<acak minimal 16 karakter>` → menjadi token URL login
+     guru (mengalahkan nilai di database). Maintenance tetap aktif.
+   - `MAINTENANCE_MODE=false` → memaksa maintenance nonaktif, sehingga
+     `/login/guru` normal terbuka lagi. Masuk, lalu atur ulang dari Pengaturan.
+   - **Restart** aplikasi setelah mengubah env.
+
+URL login siswa bisa diganti dari kartu Pengaturan (tombol **Ganti URL** pada kotak
+URL siswa) kapan saja selama guru bisa login.
+
+Aturan prioritas: env cPanel mengalahkan nilai database. `MAINTENANCE_TITLE` dan
+`MAINTENANCE_MESSAGE` opsional, dipakai saat `MAINTENANCE_MODE=true` (berguna kalau
+DB sedang tidak bisa diakses).
+
+> **Penting:** jangan menyalakan `MAINTENANCE_MODE=true` sebelum URL login guru pernah
+> dibuat (belum pernah membuka `/guru/pengaturan`). Tanpa token, URL `/guru-masuk/...`
+> tidak ada dan login guru tidak bisa diakses. Sertakan `MAINTENANCE_GURU_TOKEN` saat
+> memakai env, atau siapkan URL dari Pengaturan lebih dulu.
+
+### Catatan deploy
+
+- Terapkan migration `0010_lovely_tarot.sql` lebih dulu (backup DB produksi,
+  baca SQL, additive tanpa `DROP`), lalu upload bundle baru dan **Restart**.
+- Halaman `/maintenance` membalas **200**, bukan 503 (keterbatasan App Router),
+  dan sudah diberi `noindex`.
+- Jangan menaruh URL `/guru-masuk/<token>` atau `/siswa-masuk/<token>` di
+  dokumentasi publik, grup, atau halaman yang bisa diakses siswa.
+- URL rahasia hanyalah pintu; kunci sebenarnya tetap password/token kelas.
+  Login password saat maintenance diizinkan, jadi maintenance bukan batas keamanan
+  keras.
+
+---
+
+## 10. Login token kelas (siswa)
+
+Fitur ini **menambah kolom**, jadi wajib mengikuti checklist migrasi di bagian 2.
+
+### Migration
+
+- File: `drizzle/0009_loud_mongu.sql` (additive, tanpa `DROP`):
+  - `kelas.login_token`, `kelas.token_login_enabled`, `kelas.token_updated_at`;
+  - `login_logs.method` (default `'password'`);
+  - index unik `kelas_login_token_idx`.
+- **Backup DB produksi dulu**, baca SQL hasil generate, lalu terapkan lewat
+  `psql`/jurnal migrasi seperti biasa. Tidak ada backfill data.
+- Tanpa migration ini, `/guru/kelas` dan `/guru/log-login` akan error karena
+  query memakai kolom baru.
+
+### Menggunakan
+
+1. Login guru → `/guru/kelas` → tombol **Token** pada kelas.
+2. Nyalakan switch → token 6 karakter dibuat otomatis (contoh tampilan `FJA-6NE`).
+3. Bagikan token ke siswa. Siswa membuka `/login/siswa` → tab **Token Kelas** →
+   masukkan token → pilih namanya → masuk.
+4. **Ganti token** membuat token baru dan mematikan token lama seketika.
+   **Hapus token** mengosongkan token sekaligus menonaktifkan login token.
+
+### Catatan
+
+- Token disimpan plaintext di `kelas.login_token` supaya guru bisa menampilkannya
+  kembali. Satu token dipakai bersama satu kelas.
+- Siswa yang tahu token bisa memilih nama temannya (impersonasi). Log login
+  mencatat metode **Token kelas**, jadi guru bisa memantau. Ganti token bila bocor.
+- Login username + password tetap tersedia dan tidak terpengaruh.
+- Rate limit percobaan token memakai tabel `login_attempts` yang sudah ada
+  (per IP, 30 kegagalan / 15 menit).
+- Saat mode maintenance aktif, login token juga ditolak.
+- Deploy: upload bundle baru → **Restart** aplikasi. Tidak ada cron/tugas berkala.

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AuthCard, AuthLink } from "@/components/auth-card";
 import { BookOpen } from "@/components/icons";
-import { LoginForm } from "@/components/login-form";
+import { SiswaLoginTabs } from "@/components/siswa-login-tabs";
 
 export const metadata: Metadata = {
   title: "Login Siswa — KelasBit",
@@ -13,7 +13,7 @@ export default function LoginSiswaPage() {
       icon={<BookOpen className="h-6 w-6" />}
       accent="brand"
       title="Login Siswa"
-      description="Masuk untuk melanjutkan materi Informatika & KKA."
+      description="Masuk dengan username & password, atau token kelas dari guru."
       footer={
         <div className="space-y-2">
           <p>
@@ -25,7 +25,7 @@ export default function LoginSiswaPage() {
         </div>
       }
     >
-      <LoginForm role="siswa" />
+      <SiswaLoginTabs />
     </AuthCard>
   );
 }

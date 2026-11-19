@@ -17,17 +17,32 @@ export type SessionUser = {
   email: string | null;
   username: string | null;
   role: Role;
+  /** Sesi siswa yang dibuat lewat halaman login khusus saat maintenance. */
+  maintenanceAccess: boolean;
 };
 
 export function homePathForRole(role: Role): string {
   return role === "guru" ? "/guru" : "/siswa";
 }
 
-export async function createSession(userId: number, role: Role): Promise<void> {
+export type CreateSessionOptions = {
+  maintenanceAccess?: boolean;
+};
+
+export async function createSession(
+  userId: number,
+  role: Role,
+  options: CreateSessionOptions = {},
+): Promise<void> {
   const id = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
 
-  await getDb().insert(sessions).values({ id, userId, expiresAt });
+  await getDb().insert(sessions).values({
+    id,
+    userId,
+    expiresAt,
+    maintenanceAccess: options.maintenanceAccess ?? false,
+  });
 
   const store = await cookies();
   store.set(COOKIE_NAME, id, {
@@ -52,7 +67,11 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
 
   const db = getDb();
   const [row] = await db
-    .select({ user: users, expiresAt: sessions.expiresAt })
+    .select({
+      user: users,
+      expiresAt: sessions.expiresAt,
+      maintenanceAccess: sessions.maintenanceAccess,
+    })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .where(eq(sessions.id, sessionId))
@@ -77,6 +96,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     email: row.user.email,
     username: row.user.username,
     role: row.user.role as Role,
+    maintenanceAccess: row.maintenanceAccess,
   };
 }
 

@@ -2,6 +2,7 @@ import { lt } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   loginLogs,
+  type LoginLogMethod,
   type LoginLogReason,
   type LoginLogStatus,
   type Role,
@@ -17,6 +18,7 @@ export type RecordLoginLogInput = {
   identifier: string;
   role?: Role;
   status: LoginLogStatus;
+  method?: LoginLogMethod;
   reason?: LoginLogReason | null;
   kelasName?: string | null;
   academicYear?: string | null;
@@ -52,6 +54,7 @@ export async function recordLoginLog(
         identifier: input.identifier.slice(0, 255),
         role: input.role ?? "siswa",
         status: input.status,
+        method: input.method ?? "password",
         reason: input.reason ?? null,
         kelasName: truncate(input.kelasName, 40),
         academicYear: truncate(input.academicYear, 9),
