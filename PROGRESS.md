@@ -431,6 +431,18 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   `npm run db:journal -- --out migrasi/journal-YYYY-MM-DD.sql`.
 - Bundle yang dipakai: `standalone-2026-11-19.zip`; migrasi:
   `migrasi-2026-11-19.zip`.
+- **Deploy kedua (malam 19 November 2026):** mode maintenance (URL login guru &
+  siswa), login token kelas, login siswa saat maintenance, dan tombol keluar mobile.
+  Dikonfirmasi user: aplikasi berjalan normal setelah deploy.
+  - Migration additive `0009_loud_mongu.sql` + `0010_lovely_tarot.sql` diterapkan
+    manual setelah backup `backup-2026-11-19-pre-v2.dump`; jurnal Drizzle
+    disinkronkan setelahnya.
+  - Bundle: `standalone-2026-11-19-v2.zip`; migrasi: `migrasi-2026-11-19-v2.zip`.
+  - Rollback disimpan: `~/apps/kelasbit-old`, `~/backup-2026-11-19-pre-v2.dump`,
+    dan build lama `standalone-2026-11-19.zip`.
+  - Catatan terminal: `~/cpanel-db-env.sh` harus di-upload lebih dulu. Kalau belum
+    ada, set manual `PGUSER=ktimmgvh_kelasbit PGDATABASE=ktimmgvh_kelasbit`
+    (password = password user PostgreSQL, bukan login cPanel).
 
 ## Yang belum dikerjakan
 
