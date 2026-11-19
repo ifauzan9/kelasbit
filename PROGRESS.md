@@ -1,6 +1,6 @@
 # Status Pengerjaan
 
-Terakhir diperbarui: 17 November 2026
+Terakhir diperbarui: 19 November 2026
 
 ## Yang sudah jadi
 
@@ -194,6 +194,124 @@ Loading state juga diverifikasi lewat CDP: skeleton ter-render (9 elemen) saat n
 tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link aktif.
 `tsc --noEmit` bersih, `npm run lint` bersih, `npm run build` sukses.
 
+### Profil & keamanan akun
+
+- Halaman **`/siswa/profil`** dan **`/guru/profil`** — ringkasan akun (nama, username/email,
+  kelas untuk siswa, status, tanggal bergabung), form edit profil, dan form keamanan.
+- Edit profil: nama wajib; email siswa opsional; email guru wajib dan **butuh konfirmasi
+  password saat ini** karena dipakai untuk login. Username dan role tetap read-only.
+- Ganti password: minimal 8 karakter, wajib cocok dengan konfirmasi, dan harus berbeda dari
+  password lama. Setelah berhasil, **semua sesi lain dicabut**; sesi yang sedang dipakai
+  tetap aktif.
+- Tombol **Keluar dari semua perangkat** menghapus seluruh sesi user lalu redirect ke
+  `/login`.
+- **Rate limiting login** berbasis tabel `login_attempts` (migration
+  `drizzle/0006_smiling_titania.sql`): maksimal 5 kegagalan per username/email dan 30
+  kegagalan per IP dalam 15 menit. Identifier dan IP disimpan sebagai hash SHA-256.
+  Login sukses membersihkan catatan akun tersebut; jika query rate limit error, login
+  bersifat fail-open agar gangguan DB kecil tidak mengunci semua pengguna.
+- **Pembersihan otomatis**: sesi kedaluwarsa dan catatan percobaan login lebih dari 24 jam
+  dihapus saat login berhasil / password diganti. Tidak perlu cron.
+- Navigasi: menu **Profil** di sidebar siswa dan guru sudah berfungsi; avatar/nama di
+  topbar dan sidebar menuju halaman profil. Nav siswa dipindah ke
+  `src/components/dashboard/siswa-nav.tsx` supaya status aktif akurat.
+- File utama: `src/lib/auth/rate-limit.ts`, `src/lib/akun/actions.ts`, `queries.ts`,
+  `src/components/akun/*`, `src/app/(dashboard)/siswa/profil/*`,
+  `src/app/(guru)/guru/profil/*`.
+- Status: diuji manual lewat browser — edit nama & email guru (password salah ditolak,
+  password benar diterima), email duplikat ditolak, profil siswa tampil, password lama
+  gagal setelah ganti password dan password baru berhasil, validasi password lama salah,
+  tombol keluar dari semua perangkat menghapus seluruh sesi, rate limit memblokir pada
+  percobaan ke-6, login sukses membersihkan catatan gagal, dan cleanup menghapus sesi
+  kedaluwarsa + catatan percobaan >24 jam. `tsc --noEmit`, `npm run lint`, dan
+  `npm run build` bersih. Build standalone diuji di port 3002: `/api/health` →
+  `{"status":"ok","db":true}`, login guru & siswa, `/guru/profil`, `/siswa/profil`,
+  serta proteksi role (guru membuka `/siswa/profil` dialihkan ke `/guru`) lolos.
+
+### Log login siswa
+
+- Tabel `login_logs` lewat migration `drizzle/0007_absurd_baron_zemo.sql` (additive,
+  3 index + FK `users.id` `ON DELETE SET NULL`).
+- Mencatat percobaan login di halaman **Login Siswa**:
+  - `berhasil` — login sukses.
+  - `gagal` — password salah, akun tidak ditemukan, bukan akun siswa, atau akun nonaktif.
+  - `diblokir` — melewati rate limit.
+- Nama siswa dan kelas disimpan sebagai **snapshot** saat login, jadi riwayat tetap terbaca
+  walau nama berubah, kelas dihapus, atau akun siswa dihapus. Identifier asli juga
+  disimpan (username/teks yang diketik).
+- Detail yang dicatat: IP (varchar 45, mendukung IPv6) dan User-Agent (dipotong 512
+  karakter). Login guru **tidak** masuk log siswa.
+- Log mulai berlaku setelah fitur dipasang; tidak ada backfill riwayat login lama.
+- Pencatatan log dibungkus `try/catch`: kalau insert gagal (mis. migration belum jalan),
+  login tetap berjalan.
+- Halaman **`/guru/log-login`**:
+  - statistik hari ini (berhasil, gagal, diblokir) + siswa unik berhasil login 7 hari;
+  - filter status, kelas (snapshot), periode 7/30/90 hari/semua, dan pencarian
+    nama/username;
+  - pagination server-side 25 baris, filter disimpan di URL;
+  - waktu ditampilkan dalam zona **Asia/Jakarta (WIB)**;
+  - User-Agent diringkas menjadi label seperti “Chrome · Windows”.
+- Retensi **90 hari**: log lama dihapus otomatis lewat `cleanupAuthData()` saat login
+  berhasil / password diganti.
+- File utama: `src/lib/auth/login-log.ts`, `src/lib/auth/request-info.ts`,
+  `src/lib/guru/login-log-queries.ts`, `login-log-utils.ts`,
+  `src/components/guru/login-log-table.tsx`,
+  `src/app/(guru)/guru/log-login/*`.
+- Status: diuji manual — log berhasil (termasuk snapshot kelas 9A), password salah,
+  akun tidak ditemukan, kredensial guru di halaman siswa, akun nonaktif, dan blokir rate
+  limit tercatat dengan status/reason tepat; login guru tidak tercatat; filter status,
+  pencarian, filter kelas, periode, pagination, dan empty state bekerja; log lama >90 hari
+  terhapus saat login; akun siswa yang dihapus menyisakan log dengan snapshot nama/kelas.
+  Data uji sudah dihapus dari DB lokal. `tsc --noEmit`, `npm run lint`, dan
+  `npm run build` bersih. Build standalone diuji di port 3002: `/api/health` →
+  `{"status":"ok","db":true}`, halaman `/guru/log-login` tampil (empty state), dan login
+  siswa lewat build standalone tercatat di `login_logs`.
+
+### Lacak lokasi login siswa
+
+- Migration `drizzle/0008_clear_marvel_zombies.sql` (additive, tanpa `DROP`) menambah
+  kolom `latitude`, `longitude`, `accuracy`, `location_status` di `login_logs` dan
+  membuat tabel `app_settings` (key-value).
+- **Toggle global** di `/guru/pengaturan`:
+  - hanya guru yang bisa mengubah;
+  - default **nonaktif** (tidak ada baris = nonaktif);
+  - key `login_location_enabled` di `app_settings`;
+  - berlaku untuk semua siswa.
+- Alur saat aktif: kredensial **divalidasi dulu** (tombol “Memproses…”). Jika user tidak
+  valid, tidak ada permintaan lokasi sama sekali. Jika login **berhasil**, sesi dibuat,
+  baru browser diminta izin lokasi (`geolocation`, high accuracy), lalu lokasi disimpan
+  ke baris log lewat route `POST /api/login-location` dan user diarahkan ke dashboard.
+- Waktu tunggu lokasi **30 detik** saat dialog izin masih terbuka, dan **15 detik** jika
+  izin sudah pernah diberikan. Selama menunggu, hanya tombol login yang berubah menjadi
+  **“Menunggu izin lokasi…”** tanpa kotak informasi tambahan; overlay “Memuat…” juga tidak
+  dipakai.
+- Jika siswa menolak, timeout, atau perangkat tidak mendukung, login tetap berjalan.
+  Login gagal/diblokir tetap `tidak_dicatat`.
+- Server memvalidasi koordinat dan tetap membaca setting saat login berhasil. Jika toggle
+  nonaktif, koordinat dari client diabaikan dan status menjadi `dimatikan`.
+- Halaman `/guru/log-login` menampilkan link **Lihat peta (akurasi)** ke Google Maps serta
+  status `ditolak`, `timeout`, `tidak_didukung`, `error`, `dimatikan`, atau
+  `tidak_dicatat`. Badge **Lacak lokasi: Aktif/Nonaktif** tersedia di header log dengan
+  link ke `/guru/pengaturan`.
+- Retensi lokasi mengikuti log: **90 hari**.
+- Privasi: browser selalu meminta izin, hanya guru yang melihat, dan fitur butuh **HTTPS**.
+  Koordinat berasal dari browser sehingga bisa dimanipulasi.
+- File utama: `src/lib/auth/geolocation.ts`, `geolocation-client.ts`,
+  `login-location.ts`, `src/app/api/login-location/route.ts`,
+  `src/lib/settings/queries.ts`, `actions.ts`,
+  `src/components/guru/login-location-setting.tsx`,
+  `src/app/(guru)/guru/pengaturan/*`.
+- Status: diuji manual — user tidak terdaftar menampilkan error **tanpa memanggil
+  geolocation** (0 panggilan); user valid menampilkan **“Memproses…”** dulu, lalu
+  **“Menunggu izin lokasi…”** setelah login berhasil; lokasi tersimpan lewat
+  `POST /api/login-location`; izin ditolak, timeout, dan koordinat tidak valid tetap
+  membuat login berhasil dengan status yang tepat; login gagal tidak menyimpan lokasi;
+  saat toggle nonaktif, tidak ada panggilan geolocation dan status `dimatikan`; toggle
+  aktif/nonaktif tersimpan di `app_settings`; badge status di halaman log akurat. Data
+  uji sudah dihapus dari DB lokal. `tsc --noEmit`, `npm run lint`, dan `npm run build`
+  bersih. Build standalone diuji di port 3002: `/api/health` OK, `/guru/pengaturan`
+  tampil default nonaktif, dan halaman `/guru/log-login` menampilkan badge nonaktif.
+
 ## Yang belum dikerjakan
 
 1. **Data dashboard siswa masih kosong** — shell dan kartu `/siswa` sudah ada, tetapi materi,
@@ -201,10 +319,10 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
    sudah punya CRUD materi dan manajemen kelas; pengelolaan tugas dan nilai belum dibuat.
    Anggota siswa per kelas serta relasi materi → kelas juga belum ada.
 2. **Belum ada registrasi mandiri** — akun siswa dibuat guru lewat `/guru/siswa`
-   (satu per satu atau import CSV), akun guru masih lewat `npm run db:seed`.
-3. **Belum ada rate limiting pada login.**
-4. **Belum ada fitur lupa password.**
-5. **Sesi lama belum dibersihkan otomatis** — baris kedaluwarsa baru dihapus saat dipakai.
+   (satu per satu atau import CSV). Sesuai keputusan pemilik, hanya ada **satu akun guru**
+   yang dibuat lewat `npm run db:seed`; belum ada UI untuk menambah akun guru lain.
+3. **Belum ada fitur lupa password** — karena belum ada pengiriman email/SMTP; reset
+   password guru saat ini hanya lewat database/seed.
 
 ## Cara lanjut di sesi berikutnya
 
@@ -244,6 +362,26 @@ npm run dev              # jalankan app
   menggantung sehingga form `useActionState` pending selamanya. Halaman sudah dinamis
   (cookie), jadi cukup `router.refresh()` dari client lewat
   `useRefreshOnSuccess`/`useScheduleRefresh` (`src/components/guru/use-refresh-on-success.ts`).
+- **Rate limit login sengaja fail-open.** Kalau query `login_attempts` gagal (mis. migrasi
+  belum jalan), login tetap diproses dan error dicatat di log. Jangan ubah menjadi
+  fail-closed tanpa memastikan tabel selalu ada.
+- **Email guru = identitas login.** Perubahan email guru wajib konfirmasi password saat ini.
+  Setelah ganti password, sesi lain dicabut tetapi sesi aktif dipertahankan lewat
+  `getSessionId()`.
+- **Log login menyimpan IP dan User-Agent mentah** di `login_logs` dan hanya ditampilkan
+  di area guru. Retensinya 90 hari. Kalau kebijakan privasi sekolah berubah, hash atau
+  samarkan IP sebelum ditampilkan.
+- **Halaman `/guru/log-login` membutuhkan migration `0007`.** Login tetap berjalan tanpa
+  tabel itu (fail-open), tetapi halaman log akan error sampai migration diterapkan.
+- **Lacak lokasi butuh HTTPS dan izin browser.** Koordinat berasal dari client dan bisa
+  dimanipulasi; jangan jadikan satu-satunya bukti. Default toggle **nonaktif** dan
+  disimpan di `app_settings`; setting dibaca saat login berhasil, jadi halaman
+  `/login/siswa` tetap static. Lokasi hanya disimpan pada login berhasil.
+- **Penyimpanan lokasi memakai route API, bukan Server Action di halaman login.**
+  Setelah login berhasil, cookie sesi sudah aktif; Server Action yang dipanggil dari
+  `/login/siswa` akan di-redirect middleware ke `/sesi` dan berakhir `405`. Karena itu
+  client memanggil `POST /api/login-location` yang tidak terkena matcher middleware dan
+  memvalidasi sesi sendiri.
 
 ## Pelajaran teknis
 

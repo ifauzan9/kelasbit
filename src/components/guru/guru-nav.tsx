@@ -8,7 +8,9 @@ import {
   BookOpen,
   ClipboardList,
   GraduationCap,
+  History,
   Home,
+  Settings,
   UserRound,
   Users,
 } from "@/components/icons";
@@ -25,8 +27,10 @@ const navItems: {
   { label: "Materi", icon: BookOpen, href: "/guru#materi" },
   { label: "Tugas", icon: ClipboardList },
   { label: "Siswa", icon: Users, href: "/guru/siswa" },
+  { label: "Log Login", icon: History, href: "/guru/log-login" },
   { label: "Nilai", icon: BarChart },
-  { label: "Profil", icon: UserRound },
+  { label: "Pengaturan", icon: Settings, href: "/guru/pengaturan" },
+  { label: "Profil", icon: UserRound, href: "/guru/profil" },
 ];
 
 function isActive(href: string | undefined, pathname: string): boolean {
@@ -123,7 +127,13 @@ export function GuruSectionLabel() {
     ? "Kelas"
     : pathname.startsWith("/guru/siswa")
       ? "Siswa"
-      : "Dashboard";
+      : pathname.startsWith("/guru/log-login")
+        ? "Log Login"
+        : pathname.startsWith("/guru/pengaturan")
+          ? "Pengaturan"
+          : pathname.startsWith("/guru/profil")
+            ? "Profil"
+            : "Dashboard";
 
   return (
     <>

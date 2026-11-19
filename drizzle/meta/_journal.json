@@ -43,6 +43,27 @@
       "when": 1794923654786,
       "tag": "0005_solid_paladin",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795047073743,
+      "tag": "0006_smiling_titania",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795049833110,
+      "tag": "0007_absurd_baron_zemo",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795053286767,
+      "tag": "0008_clear_marvel_zombies",
+      "breakpoints": true
     }
   ]
 }

@@ -2,13 +2,14 @@ import type { ComponentType, SVGProps } from "react";
 
 type IconComponent = ComponentType<SVGProps<SVGSVGElement>>;
 
-export type StatTone = "emerald" | "sky" | "violet" | "amber";
+export type StatTone = "emerald" | "sky" | "violet" | "amber" | "rose";
 
 const toneStyles: Record<StatTone, string> = {
   emerald: "bg-emerald-50 text-emerald-600 ring-emerald-100",
   sky: "bg-sky-50 text-sky-600 ring-sky-100",
   violet: "bg-violet-50 text-violet-600 ring-violet-100",
   amber: "bg-amber-50 text-amber-600 ring-amber-100",
+  rose: "bg-rose-50 text-rose-600 ring-rose-100",
 };
 
 export function StatCard({

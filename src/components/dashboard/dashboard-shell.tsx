@@ -1,35 +1,12 @@
 import Link from "next/link";
-import type { ComponentType, ReactNode, SVGProps } from "react";
+import type { ReactNode } from "react";
+import { Bell, GraduationCap, LogOut, Search } from "@/components/icons";
 import {
-  BarChart,
-  Bell,
-  BookOpen,
-  ClipboardList,
-  CodeXml,
-  GraduationCap,
-  Home,
-  LogOut,
-  Search,
-  UserRound,
-} from "@/components/icons";
+  SiswaMobileNav,
+  SiswaSidebarNav,
+} from "@/components/dashboard/siswa-nav";
 import { logout } from "@/lib/auth/actions";
 import type { SessionUser } from "@/lib/auth/session";
-
-type IconComponent = ComponentType<SVGProps<SVGSVGElement>>;
-
-const navItems: {
-  label: string;
-  icon: IconComponent;
-  href?: string;
-  active?: boolean;
-}[] = [
-  { label: "Dashboard", icon: Home, href: "/siswa", active: true },
-  { label: "Materi", icon: BookOpen, href: "/siswa#materi" },
-  { label: "Tugas", icon: ClipboardList, href: "/siswa#tugas" },
-  { label: "Lab Coding", icon: CodeXml },
-  { label: "Nilai", icon: BarChart },
-  { label: "Profil", icon: UserRound },
-];
 
 function initialsOf(name: string): string {
   return name
@@ -38,48 +15,6 @@ function initialsOf(name: string): string {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
-}
-
-function SidebarNav() {
-  return (
-    <nav className="mt-9 flex flex-1 flex-col gap-1.5">
-      {navItems.map(({ label, icon: Icon, href, active }) => {
-        const content = (
-          <>
-            <Icon className="h-5 w-5 shrink-0" />
-            <span>{label}</span>
-          </>
-        );
-
-        if (href) {
-          return (
-            <Link
-              key={label}
-              href={href}
-              className={
-                active
-                  ? "flex items-center gap-3 rounded-xl bg-white px-3.5 py-3 text-sm font-bold text-emerald-800 shadow-lg shadow-emerald-950/30"
-                  : "flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-              }
-            >
-              {content}
-            </Link>
-          );
-        }
-
-        return (
-          <span
-            key={label}
-            aria-disabled
-            title="Segera hadir"
-            className="flex cursor-default items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-semibold text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-          >
-            {content}
-          </span>
-        );
-      })}
-    </nav>
-  );
 }
 
 export function DashboardShell({
@@ -113,11 +48,14 @@ export function DashboardShell({
         </Link>
 
         <div className="relative flex flex-1 flex-col">
-          <SidebarNav />
+          <SiswaSidebarNav />
         </div>
 
         <div className="relative mt-4 rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
-          <div className="flex items-center gap-3">
+          <Link
+            href="/siswa/profil"
+            className="flex items-center gap-3 rounded-lg transition-colors hover:bg-white/5"
+          >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-400/20 text-xs font-extrabold text-emerald-200 ring-1 ring-emerald-400/25">
               {initialsOf(user.name)}
             </span>
@@ -125,7 +63,7 @@ export function DashboardShell({
               <p className="truncate text-sm font-bold text-white">{user.name}</p>
               <p className="text-[11px] font-medium text-white/45">Siswa</p>
             </div>
-          </div>
+          </Link>
 
           <form action={logout} className="mt-3">
             <button
@@ -182,7 +120,10 @@ export function DashboardShell({
 
               <span className="hidden h-9 w-px bg-slate-200 sm:block" />
 
-              <div className="flex items-center gap-2.5">
+              <Link
+                href="/siswa/profil"
+                className="flex items-center gap-2.5 rounded-xl px-1 py-1 transition-colors hover:bg-slate-100"
+              >
                 <span className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-700">
                   {initialsOf(user.name)}
                 </span>
@@ -192,36 +133,11 @@ export function DashboardShell({
                   </span>
                   <span className="block text-xs font-medium text-slate-400">Siswa</span>
                 </span>
-              </div>
+              </Link>
             </div>
           </div>
 
-          <nav className="no-scrollbar flex gap-1.5 overflow-x-auto px-4 pb-3 lg:hidden">
-            {navItems.map(({ label, icon: Icon, href, active }) =>
-              href ? (
-                <Link
-                  key={label}
-                  href={href}
-                  className={
-                    active
-                      ? "inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white"
-                      : "inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-600 ring-1 ring-slate-200"
-                  }
-                >
-                  <Icon className="h-4 w-4" />
-                  {label}
-                </Link>
-              ) : (
-                <span
-                  key={label}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-500 ring-1 ring-slate-200"
-                >
-                  <Icon className="h-4 w-4" />
-                  {label}
-                </span>
-              ),
-            )}
-          </nav>
+          <SiswaMobileNav />
         </header>
 
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">

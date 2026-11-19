@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { login, type LoginState } from "@/lib/auth/actions";
+import { detectBrowserLocation } from "@/lib/auth/geolocation-client";
 import { emitBusy } from "@/lib/hooks/use-navigation-pending";
 import type { Role } from "@/lib/db/schema";
 
@@ -13,19 +14,70 @@ type LoginFormProps = {
 
 export function LoginForm({ role }: LoginFormProps) {
   const [state, formAction, pending] = useActionState(login, initialState);
+  // Form action React 19 mereset input tak-terkontrol setelah submit. Identifier
+  // dibuat terkontrol supaya tidak hilang saat login gagal.
+  const [identifier, setIdentifier] = useState("");
+  const [locating, setLocating] = useState(false);
+  const handledStampRef = useRef<number | null>(null);
 
   const isGuru = role === "guru";
+  const finishing = Boolean(state.success && state.redirectTo);
+  const busy = pending || locating || finishing;
 
   useEffect(() => {
+    // Jangan tampilkan overlay "Memuat…" saat menunggu dialog izin lokasi.
     if (!pending) return;
 
     emitBusy(true);
     return () => emitBusy(false);
   }, [pending]);
 
+  useEffect(() => {
+    if (!state.success || !state.stamp || !state.redirectTo) return;
+    if (handledStampRef.current === state.stamp) return;
+
+    handledStampRef.current = state.stamp;
+
+    const redirectTo = state.redirectTo;
+    const loginLogId = state.loginLogId;
+    const needsLocation = state.needsLocation;
+
+    async function finish() {
+      if (needsLocation && loginLogId) {
+        setLocating(true);
+
+        try {
+          const location = await detectBrowserLocation({
+            promptTimeoutMs: 30_000,
+            grantedTimeoutMs: 15_000,
+          });
+
+          const response = await fetch("/api/login-location", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ logId: loginLogId, location }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Gagal menyimpan lokasi (${response.status}).`);
+          }
+        } catch (error) {
+          console.error("login: gagal menyimpan lokasi", error);
+        } finally {
+          setLocating(false);
+        }
+      }
+
+      window.location.replace(redirectTo);
+    }
+
+    void finish();
+  }, [state]);
+
   return (
     <form action={formAction} className="space-y-5">
       <input type="hidden" name="role" value={role} />
+
       <div className="space-y-2">
         <label htmlFor="identifier" className="block text-sm font-semibold text-slate-700">
           {isGuru ? "Email" : "Username"}
@@ -38,6 +90,8 @@ export function LoginForm({ role }: LoginFormProps) {
           autoCapitalize="none"
           spellCheck={false}
           required
+          value={identifier}
+          onChange={(event) => setIdentifier(event.target.value)}
           placeholder={isGuru ? "nama@sekolah.sch.id" : "budi.santoso"}
           className={`w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:ring-2 ${
             isGuru
@@ -77,15 +131,23 @@ export function LoginForm({ role }: LoginFormProps) {
 
       <button
         type="submit"
-        disabled={pending}
-        aria-busy={pending}
+        disabled={busy}
+        aria-busy={busy}
         className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-lg transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${
           isGuru
             ? "bg-emerald-600 shadow-emerald-600/30 hover:bg-emerald-700"
             : "bg-brand-600 shadow-brand-600/30 hover:bg-brand-700"
         }`}
       >
-        {pending ? (
+        {locating ? (
+          <>
+            <span
+              className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white motion-reduce:animate-none"
+              aria-hidden
+            />
+            Menunggu izin lokasi…
+          </>
+        ) : pending || finishing ? (
           <>
             <span
               className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white motion-reduce:animate-none"

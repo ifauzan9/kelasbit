@@ -1,9 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, eq, lt, ne } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { sessions, users, type Role } from "@/lib/db/schema";
+import { cleanupLoginLogs } from "@/lib/auth/login-log";
+import { cleanupLoginAttempts } from "@/lib/auth/rate-limit";
 
 const COOKIE_NAME = "kelasbit_session";
 const ROLE_COOKIE_NAME = "kelasbit_role";
@@ -85,6 +87,55 @@ export async function requireUser(role: Role): Promise<SessionUser> {
   if (user.role !== role) redirect(homePathForRole(user.role));
 
   return user;
+}
+
+/** Untuk Server Action/halaman yang boleh diakses role mana pun. */
+export async function requireCurrentUser(): Promise<SessionUser> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+
+  return user;
+}
+
+/** ID sesi yang sedang dipakai, dipakai saat mencabut sesi lain. */
+export async function getSessionId(): Promise<string | null> {
+  const store = await cookies();
+  return store.get(COOKIE_NAME)?.value ?? null;
+}
+
+/** Hapus semua sesi milik user kecuali sesi yang sedang dipakai. */
+export async function revokeOtherSessions(
+  userId: number,
+  keepSessionId: string | null,
+): Promise<void> {
+  const conditions = [eq(sessions.userId, userId)];
+  if (keepSessionId) conditions.push(ne(sessions.id, keepSessionId));
+
+  await getDb().delete(sessions).where(and(...conditions));
+}
+
+/** Hapus semua sesi user, termasuk sesi saat ini (dipakai untuk logout semua perangkat). */
+export async function destroyAllSessions(userId: number): Promise<void> {
+  await getDb().delete(sessions).where(eq(sessions.userId, userId));
+
+  const store = await cookies();
+  store.delete(COOKIE_NAME);
+  store.delete(ROLE_COOKIE_NAME);
+}
+
+/**
+ * Bersihkan sesi kedaluwarsa dan catatan percobaan login lama.
+ * Dipanggil saat login berhasil dan saat password diganti.
+ */
+export async function cleanupAuthData(): Promise<void> {
+  try {
+    await getDb().delete(sessions).where(lt(sessions.expiresAt, new Date()));
+  } catch (error) {
+    console.error("cleanup: gagal menghapus sesi kedaluwarsa", error);
+  }
+
+  await cleanupLoginAttempts();
+  await cleanupLoginLogs();
 }
 
 export async function destroySession(): Promise<void> {

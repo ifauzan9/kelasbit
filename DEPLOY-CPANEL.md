@@ -62,7 +62,7 @@ pg_dump -Fc -f ~/backup-YYYY-MM-DD.dump && ls -lh ~/backup-YYYY-MM-DD.dump || ec
 cd ~/migrasi
 ```
 ```bash
-for f in 0003_*.sql 0004_*.sql 0005_*.sql; do echo "===== $f"; psql -1 -v ON_ERROR_STOP=1 -f "$f" || { echo "STOP: $f gagal"; break; }; done
+for f in 0003_*.sql 0004_*.sql 0005_*.sql 0006_*.sql 0007_*.sql 0008_*.sql; do echo "===== $f"; psql -1 -v ON_ERROR_STOP=1 -f "$f" || { echo "STOP: $f gagal"; break; }; done
 ```
 **Stop jika ada `ERROR`/`STOP`.**
 

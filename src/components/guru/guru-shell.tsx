@@ -53,7 +53,10 @@ export function GuruShell({
         </div>
 
         <div className="relative mt-4 rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
-          <div className="flex items-center gap-3">
+          <Link
+            href="/guru/profil"
+            className="flex items-center gap-3 rounded-lg transition-colors hover:bg-white/5"
+          >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-400/20 text-xs font-extrabold text-emerald-200 ring-1 ring-emerald-400/25">
               {initialsOf(user.name)}
             </span>
@@ -61,7 +64,7 @@ export function GuruShell({
               <p className="truncate text-sm font-bold text-white">{user.name}</p>
               <p className="text-[11px] font-medium text-white/45">Guru</p>
             </div>
-          </div>
+          </Link>
 
           <form action={logout} className="mt-3">
             <button
@@ -113,7 +116,10 @@ export function GuruShell({
 
               <span className="hidden h-9 w-px bg-slate-200 sm:block" />
 
-              <div className="flex items-center gap-2.5">
+              <Link
+                href="/guru/profil"
+                className="flex items-center gap-2.5 rounded-xl px-1 py-1 transition-colors hover:bg-slate-100"
+              >
                 <span className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-700">
                   {initialsOf(user.name)}
                 </span>
@@ -123,7 +129,7 @@ export function GuruShell({
                   </span>
                   <span className="block text-xs font-medium text-slate-400">Guru</span>
                 </span>
-              </div>
+              </Link>
             </div>
           </div>
 

@@ -56,7 +56,7 @@ Kredensial default: user/password/database = `kelasbit`.
 | `src/app/` | App Router (halaman + API routes) |
 | `src/app/api/health/route.ts` | Health check + tes koneksi PostgreSQL |
 | `src/lib/db/index.ts` | Pool `pg` + instance Drizzle (lazy) |
-| `src/lib/db/schema.ts` | Schema Drizzle (tabel `kelas`, `users`, `sessions`, `materi`) |
+| `src/lib/db/schema.ts` | Schema Drizzle (tabel `kelas`, `users`, `sessions`, `materi`, `login_attempts`, `login_logs`, `app_settings`) |
 | `src/app/(public)/` | Halaman publik: `/`, `/login*` — memakai header/footer situs |
 | `src/app/(dashboard)/` | Area dashboard siswa — memakai shell sidebar + topbar sendiri |
 | `src/app/(dashboard)/siswa/page.tsx` | Dashboard siswa (banner + kartu empty state) |
@@ -65,6 +65,26 @@ Kredensial default: user/password/database = `kelasbit`.
 | `src/app/(guru)/guru/kelas/page.tsx` | Manajemen kelas (nama + tahun ajaran) |
 | `src/app/(guru)/guru/siswa/page.tsx` | Manajemen siswa + pembuatan akun login |
 | `src/app/(guru)/guru/siswa/template/route.ts` | Unduh template import `.xlsx` (khusus guru) |
+| `src/app/(guru)/guru/log-login/page.tsx` | Log login siswa: statistik, filter, pencarian, pagination, lokasi |
+| `src/app/(guru)/guru/pengaturan/page.tsx` | Pengaturan aplikasi: toggle lacak lokasi login siswa |
+| `src/app/(dashboard)/siswa/profil/page.tsx` | Profil siswa: info akun, edit profil, keamanan |
+| `src/app/(guru)/guru/profil/page.tsx` | Profil guru: info akun, edit profil, keamanan |
+| `src/lib/akun/actions.ts` | Server Actions profil: update profil, ganti password, logout semua perangkat |
+| `src/lib/akun/queries.ts` | Query data profil + kelas siswa |
+| `src/components/akun/` | Komponen ringkasan profil, form edit, dan form keamanan |
+| `src/lib/auth/rate-limit.ts` | Rate limiting login berbasis tabel `login_attempts` |
+| `src/lib/auth/login-log.ts` | Pencatatan & cleanup riwayat login siswa (tabel `login_logs`) |
+| `src/lib/auth/request-info.ts` | Ambil IP dan User-Agent dari header request |
+| `src/lib/guru/login-log-queries.ts` | Query log login: filter, pagination, statistik |
+| `src/lib/guru/login-log-utils.ts` | Format status/alasan, lokasi, waktu WIB, dan User-Agent |
+| `src/components/guru/login-log-table.tsx` | Tabel log login + pagination + link peta |
+| `src/lib/auth/geolocation.ts` | Tipe status lokasi, validasi koordinat, URL Google Maps |
+| `src/lib/auth/geolocation-client.ts` | Ambil lokasi browser sekali setelah login berhasil |
+| `src/lib/auth/login-location.ts` | Update baris log login dengan lokasi |
+| `src/app/api/login-location/route.ts` | Route POST untuk menyimpan lokasi setelah sesi aktif |
+| `src/lib/settings/queries.ts` | Baca pengaturan aplikasi (toggle lokasi login) |
+| `src/lib/settings/actions.ts` | Server Action toggle lokasi khusus guru |
+| `src/components/guru/login-location-setting.tsx` | Kartu switch lacak lokasi login |
 | `src/lib/guru/actions.ts` | Server Actions CRUD materi: tambah, ubah, hapus |
 | `src/lib/guru/queries.ts` | Query daftar materi |
 | `src/lib/guru/kelas-actions.ts` | Server Actions CRUD kelas: tambah, ubah, hapus |
@@ -111,12 +131,35 @@ Password di-hash dengan `scrypt` bawaan Node, jadi tidak ada dependency tambahan
 
 - **Siswa login memakai `username`** yang dibuat otomatis dari nama (mis. `budi.santoso`;
   kalau sudah dipakai menjadi `budi.santoso2`). Email siswa opsional.
-- **Guru login memakai email.**
+- **Guru login memakai email.** Saat ini hanya ada satu akun guru (dibuat lewat
+  `npm run db:seed`); belum ada UI untuk menambah akun guru lain.
 - Akun siswa bisa dinonaktifkan dari `/guru/siswa`; akun nonaktif tidak bisa login dan
   sesinya langsung dihapus.
 - Username tidak berubah saat nama siswa diedit.
 - Siswa bisa punya **kelas** (relasi `users.kelas_id` → `kelas.id`). Kalau kelas dihapus,
   siswanya tetap ada dan menjadi "tanpa kelas" (`ON DELETE SET NULL`).
+- Setiap pengguna punya halaman **profil** (`/siswa/profil`, `/guru/profil`) untuk mengubah
+  nama, email, dan password. Email guru dipakai untuk login, sehingga perubahannya wajib
+  dikonfirmasi dengan password saat ini. Username dan role tidak bisa diubah.
+- Ganti password mencabut semua sesi lain; tersedia juga tombol **Keluar dari semua
+  perangkat**.
+- Login dibatasi **5 kegagalan per akun / 15 menit** dan **30 kegagalan per IP / 15 menit**
+  (tabel `login_attempts`, identifier & IP di-hash). Login berhasil membersihkan catatan
+  akun tersebut.
+- Percobaan login siswa dicatat di tabel `login_logs` (berhasil, gagal, dan diblokir)
+  lengkap dengan nama/kelas snapshot, IP, dan User-Agent. Guru bisa melihatnya di
+  `/guru/log-login` dengan filter status/kelas/periode dan pagination.
+- Log login lebih lama dari **90 hari** dibersihkan otomatis. Riwayat mulai terkumpul
+  setelah fitur dipasang; tidak ada backfill login lama.
+- Guru bisa mengaktifkan/menonaktifkan **lacak lokasi login siswa** di
+  `/guru/pengaturan` (default **nonaktif**). Kredensial divalidasi lebih dulu; user yang
+  tidak valid tidak memicu permintaan lokasi. Setelah login berhasil, browser siswa baru
+  diminta izin lokasi, lalu lokasi disimpan ke log dan user diarahkan ke dashboard.
+  Jika siswa menolak atau timeout, login tetap berjalan. Selama menunggu izin, tombol
+  login menampilkan “Menunggu izin lokasi…”. Koordinat ditampilkan sebagai link Google
+  Maps + akurasi. Fitur ini membutuhkan **HTTPS**.
+- Sesi kedaluwarsa dan catatan percobaan login lebih dari 24 jam dibersihkan otomatis saat
+  login berhasil atau password diganti.
 
 | Rute | Keterangan |
 | --- | --- |
@@ -128,6 +171,10 @@ Password di-hash dengan `scrypt` bawaan Node, jadi tidak ada dependency tambahan
 | `/guru/kelas` | Manajemen kelas — wajib login sebagai guru |
 | `/guru/siswa` | Manajemen siswa + akun login — wajib login sebagai guru |
 | `/guru/siswa/template` | Unduh template import siswa `.xlsx` — wajib login sebagai guru |
+| `/guru/log-login` | Log login siswa: berhasil, gagal, diblokir, filter & pagination — wajib login sebagai guru |
+| `/guru/pengaturan` | Pengaturan aplikasi: toggle lacak lokasi login siswa — wajib login sebagai guru |
+| `/siswa/profil` | Profil siswa: info akun, edit profil, ganti password — wajib login sebagai siswa |
+| `/guru/profil` | Profil guru: info akun, edit profil, ganti password — wajib login sebagai guru |
 | `/sesi` | Route handler yang mengarahkan ke dashboard sesuai role |
 
 Status loading saat berpindah halaman:

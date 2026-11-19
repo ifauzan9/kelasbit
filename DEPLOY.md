@@ -46,9 +46,15 @@ lama, dan kredensial lokal ikut terupload.
 - [ ] **Baca isi SQL-nya.** Tolak/tulis ulang kalau ada `DROP TABLE`, `DROP COLUMN`,
       atau perubahan tipe yang menghilangkan data.
 - [ ] Uji migrasi di DB lokal yang masih punya data (`npm run db:migrate`).
-- [ ] Migrasi terakhir untuk fitur siswa + kelas: `drizzle/0005_solid_paladin.sql`
-      (menambah `users.kelas_id` + index, tanpa `DROP`). Jalankan **setelah** backup.
-      Migrasi ini hanya menambah kolom nullable; siswa lama otomatis "tanpa kelas".
+- [ ] Migrasi terakhir untuk fitur lacak lokasi login: `drizzle/0008_clear_marvel_zombies.sql`
+      (menambah kolom `latitude`, `longitude`, `accuracy`, `location_status` di
+      `login_logs` dan membuat `app_settings`, tanpa `DROP`). Jalankan **setelah**
+      backup. Toggle lokasi default nonaktif; halaman `/guru/pengaturan` membutuhkan
+      tabel `app_settings`.
+- [ ] Migrasi sebelumnya: `drizzle/0007_absurd_baron_zemo.sql` membuat `login_logs`;
+      `drizzle/0006_smiling_titania.sql` membuat `login_attempts`;
+      `drizzle/0005_solid_paladin.sql` menambah `users.kelas_id`
+      + index (nullable, siswa lama otomatis "tanpa kelas").
 - [ ] **Backup DB produksi** (phpPgAdmin → Export, atau `pg_dump` via SSH tunnel).
 - [ ] Simpan file backup dengan tanggal, mis. `backup-prod-2026-11-17.sql`.
 - [ ] Migrasi lewat SSH tunnel, di terminal terpisah:
@@ -75,6 +81,9 @@ lama, dan kredensial lokal ikut terupload.
        psql ... -f drizzle/0003_icy_johnny_blaze.sql
        psql ... -f drizzle/0004_fuzzy_sersi.sql
        psql ... -f drizzle/0005_solid_paladin.sql
+       psql ... -f drizzle/0006_smiling_titania.sql
+       psql ... -f drizzle/0007_absurd_baron_zemo.sql
+       psql ... -f drizzle/0008_clear_marvel_zombies.sql
 
 3. Catat jurnal Drizzle supaya `npm run db:migrate` berikutnya tidak mengulang
    migrasi lama (`hash` = sha256 isi file SQL):
@@ -82,12 +91,15 @@ lama, dan kredensial lokal ikut terupload.
        INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES
         ('6a84a8f9fc9e3b12fc20e43d1697e15a531da2be609524afeae33bf69118eb44', 1794917966073),
         ('dbfc8de35b4ce97f685a33077e2ef17985a274329fd185d439bf80b798b1f1f8', 1794919938764),
-        ('03edde9f67a0faa19e08fb3b035d09462608da650a67832cb4923b456971e307', 1794923654786);
+        ('03edde9f67a0faa19e08fb3b035d09462608da650a67832cb4923b456971e307', 1794923654786),
+        ('e72b3a13500359f7f3c9b7ce3f8710e1f6c8170d61415b133a9582475c216d1e', 1795047073743),
+        ('18ec40521b271928bd39ea1f8b2d97fab9da58c191044e24d6aad14c50ec2760', 1795049833110),
+        ('640d60f5945a5b40880d16343773ac82370621203415ebe8bdf5c9c4b2263266', 1795053286767);
 
-   Cek: `select count(*) from drizzle.__drizzle_migrations;` → **6**.
+   Cek: `select count(*) from drizzle.__drizzle_migrations;` → **9**.
    Kalau produksi ternyata belum punya tabel `drizzle.__drizzle_migrations`
-   (artinya dulu migrasi dijalankan manual tanpa Drizzle), jalankan 0000–0005
-   sekaligus lalu catat keenam hash di atas.
+   (artinya dulu migrasi dijalankan manual tanpa Drizzle), jalankan 0000–0008
+   sekaligus lalu catat hash masing-masing.
 
 ---
 
@@ -140,6 +152,21 @@ menghapus `.env*`. Tetap verifikasi:
 - [ ] Landing page tampil normal.
 - [ ] Login siswa (`siswa` / `siswa12345`) dan guru (`guru@kelasbit.id`) berhasil.
 - [ ] **Smoke test fitur baru** sesuai skenario utama.
+- [ ] Khusus fitur profil & keamanan: buka `/siswa/profil` dan `/guru/profil`, ubah nama,
+      coba ganti password (pastikan sesi lain keluar dan password baru bisa dipakai), lalu
+      uji tombol **Keluar dari semua perangkat**.
+- [ ] Uji rate limit login: 5 kali password salah → muncul pesan blokir; login benar
+      setelah jendela waktu (15 menit) harus berhasil. Jangan menguji berlebihan di akun
+      guru produksi.
+- [ ] Khusus fitur log login: login siswa sekali, lalu buka `/guru/log-login`. Pastikan
+      baris `berhasil` muncul dengan nama, kelas, IP, perangkat, dan waktu WIB. Coba juga
+      satu password salah (baris `gagal`) dan filter status/kelas/pencarian. Hapus data
+      uji dari DB produksi setelahnya.
+- [ ] Khusus lacak lokasi: buka `/guru/pengaturan`, pastikan default **Nonaktif**.
+      Aktifkan, lalu login siswa dan uji izin lokasi **ditolak** dan **diizinkan**.
+      Pastikan log sukses menampilkan “Lihat peta” atau status `ditolak`, dan login tetap
+      berjalan saat izin ditolak. Nonaktifkan lagi, login siswa → status `dimatikan`.
+      Fitur ini **wajib HTTPS**; tanpa HTTPS browser tidak memberi lokasi.
 - [ ] Khusus fitur siswa: unduh template di `/guru/siswa/template`, lihat isi 3 sheet,
       lalu import 1 baris uji: setelah **Periksa File** harus muncul tabel pratinjau
       (status *Siap*/*Gagal* + alasan), dan **belum ada akun** sebelum tombol **Import**
