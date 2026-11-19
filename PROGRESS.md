@@ -312,6 +312,20 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   bersih. Build standalone diuji di port 3002: `/api/health` OK, `/guru/pengaturan`
   tampil default nonaktif, dan halaman `/guru/log-login` menampilkan badge nonaktif.
 
+### Deploy produksi (19 November 2026)
+
+- Deploy ke cPanel **berhasil**; fitur profil, log login, dan lacak lokasi berjalan normal.
+- Kondisi awal produksi: tabel `0000`–`0005` sudah ada, tetapi
+  `drizzle.__drizzle_migrations` belum ada. Migration `0006`–`0008` dijalankan manual,
+  lalu jurnal `0000`–`0008` disinkronkan.
+- Panduan langkah deploy ada di `DEPLOY-CPANEL.md`.
+- Koneksi DB di Terminal cPanel: upload `scripts/cpanel-db-env.sh`, lalu
+  `source ~/cpanel-db-env.sh`. Password diminta setiap sesi dan tidak disimpan.
+- Jurnal migrasi untuk deploy berikutnya dibuat dengan
+  `npm run db:journal -- --out migrasi/journal-YYYY-MM-DD.sql`.
+- Bundle yang dipakai: `standalone-2026-11-19.zip`; migrasi:
+  `migrasi-2026-11-19.zip`.
+
 ## Yang belum dikerjakan
 
 1. **Data dashboard siswa masih kosong** — shell dan kartu `/siswa` sudah ada, tetapi materi,

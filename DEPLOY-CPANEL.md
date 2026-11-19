@@ -3,6 +3,22 @@
 Langkah praktis deploy build baru ke produksi cPanel.  
 **Urutan wajib:** migrasi DB dulu → baru pasang kode.
 
+## Alur deploy berikutnya (ringkas)
+
+- [ ] `npm run build` lalu `npm run deploy:prepare`
+- [ ] Jika schema berubah: `npm run db:generate`, baca SQL-nya
+- [ ] Generate jurnal: `npm run db:journal -- --out migrasi/journal-YYYY-MM-DD.sql`
+- [ ] Zip isi `.next/standalone` → `standalone-YYYY-MM-DD.zip`
+- [ ] Upload zip aplikasi + file migrasi + jurnal ke `/home/ktimmgvh/`
+- [ ] Extract file migrasi ke `~/migrasi/`
+- [ ] `source ~/cpanel-db-env.sh`
+- [ ] Backup DB
+- [ ] Cek migrasi terakhir, jalankan **hanya file baru**
+- [ ] Jalankan `journal-YYYY-MM-DD.sql`
+- [ ] Verifikasi jumlah jurnal dan tabel/kolom
+- [ ] Upload/swap kode, **Restart**, smoke test
+- [ ] Simpan `standalone` lama dan backup sampai stabil
+
 ---
 
 ## 0. Build di komputer lokal
@@ -17,14 +33,18 @@ Langkah praktis deploy build baru ke produksi cPanel.
    npm run build
    npm run deploy:prepare
    ```
-4. Buat zip dari isi `.next/standalone` (root zip harus langsung berisi `server.js`):
+4. **Jika schema DB berubah:** jalankan `npm run db:generate`, baca SQL baru di
+   `drizzle/`, lalu generate file jurnal:
+   ```powershell
+   npm run db:journal -- --out migrasi/journal-YYYY-MM-DD.sql
+   ```
+   File ini mencatat hash **semua** migrasi dan aman dijalankan berulang.
+5. Buat zip dari isi `.next/standalone` (root zip harus langsung berisi `server.js`):
    ```powershell
    if (Test-Path standalone-YYYY-MM-DD.zip) { Remove-Item standalone-YYYY-MM-DD.zip }
    tar -a -c -f standalone-YYYY-MM-DD.zip -C .next/standalone .
    ```
-5. (Opsional) Uji zip: extract ke folder kosong → set env → `node server.js` → cek `/api/health`.
-
-**Jika ada perubahan schema DB:** jalankan `npm run db:generate`, periksa SQL di `drizzle/`, commit.
+6. (Opsional) Uji zip: extract ke folder kosong → set env → `node server.js` → cek `/api/health`.
 
 ---
 
@@ -33,7 +53,14 @@ Langkah praktis deploy build baru ke produksi cPanel.
 | Dari lokal | Ke server |
 |---|---|
 | `standalone-YYYY-MM-DD.zip` | `/home/ktimmgvh/` |
-| File migrasi baru saja (mis. `0006_*.sql`) dari folder `drizzle/` | `/home/ktimmgvh/migrasi/` (buat folder jika belum ada) |
+| File migrasi baru dari folder `drizzle/` | `/home/ktimmgvh/migrasi/` |
+| `migrasi/journal-YYYY-MM-DD.sql` | `/home/ktimmgvh/migrasi/` |
+
+Buat zip migrasi jika perlu:
+
+```powershell
+tar -a -c -f migrasi-YYYY-MM-DD.zip -C migrasi .
+```
 
 - Jangan taruh file `.sql` di dalam folder aplikasi (hilang saat swap).
 - Jangan upload `.env` (env produksi diatur di *Setup Node.js App*).
@@ -44,6 +71,9 @@ Langkah praktis deploy build baru ke produksi cPanel.
 
 Jalankan **satu perintah per langkah** (tempel sekaligus sering terpotong). Tunggu prompt `$` sebelum lanjut.
 
+> **Terminal cPanel refresh = env hilang.** Jika `PGUSER`/`PGPASSWORD` hilang, ulangi
+> langkah koneksi di bawah. Password database tidak berubah.
+
 **2.1 Koneksi DB** *(ganti `PGUSER`/`PGDATABASE` jika berbeda; cek: cPanel → PostgreSQL Databases)*:
 ```bash
 read -r -s -p "Password DB: " PGPASSWORD; echo
@@ -52,27 +82,74 @@ read -r -s -p "Password DB: " PGPASSWORD; echo
 export PGPASSWORD PGHOST=localhost PGUSER=ktimmgvh_kelasbit PGDATABASE=ktimmgvh_kelasbit
 ```
 
-**2.2 Backup** *(jika gagal karena versi `pg_dump` vs server, lanjut jika data tidak kritis; cadangan bisa via phpPgAdmin Export)*:
+**Simpan koneksi agar tahan refresh terminal:** upload `scripts/cpanel-db-env.sh` dari repo
+ke `/home/ktimmgvh/cpanel-db-env.sh`, lalu:
+
 ```bash
-pg_dump -Fc -f ~/backup-YYYY-MM-DD.dump && ls -lh ~/backup-YYYY-MM-DD.dump || echo "pg_dump gagal; lanjut"
+chmod 700 ~/cpanel-db-env.sh
+source ~/cpanel-db-env.sh
 ```
 
-**2.3 Jalankan migrasi baru** *(urut & sesuaikan nama file; lewati jika tidak ada migrasi baru)*:
+Script akan meminta password dan mengetes koneksi. Password **tidak disimpan** di file.
+Jika user/database berbeda:
+
+```bash
+PGUSER=user_lain PGDATABASE=db_lain source ~/cpanel-db-env.sh
+```
+
+**2.2 Backup** *(wajib sebelum migrasi)*:
+```bash
+pg_dump -Fc -f ~/backup-YYYY-MM-DD.dump
+ls -lh ~/backup-YYYY-MM-DD.dump
+```
+Jika `pg_dump` gagal karena versi tidak cocok, gunakan **phpPgAdmin → Export**.
+**Jangan lanjut migrasi tanpa backup.**
+
+**2.3 Cek migrasi terakhir**:
+```bash
+psql -c "select count(*) from drizzle.__drizzle_migrations;"
+```
+```bash
+psql -c "select hash, created_at from drizzle.__drizzle_migrations order by created_at desc limit 5;"
+```
+
+**Jangan jalankan ulang file migrasi yang sudah tercatat.** Jalankan hanya file baru dari rilis ini.
+
+**2.4 Jalankan migrasi baru**:
 ```bash
 cd ~/migrasi
+ls -1
 ```
 ```bash
-for f in 0003_*.sql 0004_*.sql 0005_*.sql 0006_*.sql 0007_*.sql 0008_*.sql; do echo "===== $f"; psql -1 -v ON_ERROR_STOP=1 -f "$f" || { echo "STOP: $f gagal"; break; }; done
+psql -1 -v ON_ERROR_STOP=1 -f ~/migrasi/0009_NAMA_MIGRASI_BARU.sql
 ```
-**Stop jika ada `ERROR`/`STOP`.**
+Ulangi untuk setiap file baru. **Stop jika ada `ERROR`.**
 
-**2.4 Verifikasi**:
+**2.5 Catat jurnal migrasi**:
+```bash
+psql -1 -v ON_ERROR_STOP=1 -f ~/migrasi/journal-YYYY-MM-DD.sql
+```
+```bash
+psql -c "select count(*) from drizzle.__drizzle_migrations;"
+```
+Jumlahnya harus sama dengan jumlah file migrasi di folder `drizzle/` lokal.
+
+**2.6 Verifikasi**:
 ```bash
 psql -c "\dt"
 ```
 ```bash
+psql -c "select to_regclass('public.login_attempts') as login_attempts, to_regclass('public.login_logs') as login_logs, to_regclass('public.app_settings') as app_settings;"
+```
+```bash
 psql -c "select id, name, username, is_active from users order by id limit 10;"
 ```
+
+> **Jika `drizzle.__drizzle_migrations` belum ada:** jangan menjalankan `db:migrate`
+> dari nol. Cek dulu tabel/kolom yang sudah ada (lihat `DEPLOY.md` bagian 2b), jalankan
+> hanya migrasi yang belum, lalu jalankan file jurnal hasil `npm run db:journal`.
+> Kondisi ini pernah terjadi di produksi pada 19 Nov 2026: `0000`–`0005` sudah ada
+> tanpa jurnal, lalu `0006`–`0008` dijalankan dan jurnal `0000`–`0008` disinkronkan.
 
 ---
 
@@ -147,4 +224,12 @@ pg_restore -c --if-exists -d ktimmgvh_kelasbit ~/backup-YYYY-MM-DD.dump
 - Produksi: hanya pakai file di `drizzle/` (migrate), **bukan** `db:push`; jangan import dump DB lokal.
 - Jangan upload `.env`; jangan hapus/overwrite folder lama sebelum verifikasi.
 - Terminal cPanel: jalankan perintah **satu per satu** jika paste multi-baris terpotong.
+- **Terminal refresh menghapus env DB.** Jalankan `source ~/cpanel-db-env.sh` lagi;
+  password database tidak berubah.
+- **Jangan jalankan ulang migrasi lama.** Cek `drizzle.__drizzle_migrations` dulu,
+  lalu jalankan hanya file baru.
+- **Jurnal Drizzle** dibuat dengan `npm run db:journal -- --out migrasi/journal-YYYY-MM-DD.sql`.
+  Jalankan setelah migrasi manual. File ini aman dijalankan berulang.
+- Produksi sudah memiliki jurnal Drizzle sejak deploy 19 Nov 2026. Jika tabel jurnal
+  hilang lagi, cek tabel/kolom dulu—jangan menjalankan `db:migrate` dari nol.
 - Setelah stabil (2–3 hari): hapus `~/standalone-*.zip`, `~/apps/kelasbit-old`, dan `~/backup-*.dump` sesuai kebutuhan.

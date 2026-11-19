@@ -19,6 +19,7 @@ npm-debug.log*
 
 # build artifacts
 *.zip
+/migrasi/
 
 # tooling
 .commandcode/

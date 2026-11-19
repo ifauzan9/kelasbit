@@ -112,6 +112,8 @@ Kredensial default: user/password/database = `kelasbit`.
 | `src/components/auth-card.tsx` | Kerangka kartu halaman login |
 | `src/lib/auth/` | Hashing password, session cookie, Server Action login/logout |
 | `scripts/seed.ts` | Membuat akun demo (`npm run db:seed`) |
+| `scripts/cpanel-db-env.sh` | Helper koneksi PostgreSQL di Terminal cPanel |
+| `scripts/generate-migration-journal.mjs` | Generate SQL jurnal migrasi (`npm run db:journal`) |
 | `drizzle/` | SQL migration hasil `npm run db:generate` |
 | `drizzle.config.ts` | Konfigurasi drizzle-kit |
 | `docker-compose.yml` | PostgreSQL lokal untuk development |
@@ -341,7 +343,10 @@ npm run deploy:prepare
 ```
 
 Upload ulang isi `.next/standalone` (timpa file lama), lalu **Restart** aplikasi di
-*Setup Node.js App*. Kalau ada migration baru, jalankan dulu lewat SSH tunnel sebelum restart.
+*Setup Node.js App*. Kalau ada migration baru, jalankan dulu lewat SSH tunnel sebelum
+restart. Untuk migrasi manual di Terminal cPanel, generate file jurnal dengan
+`npm run db:journal -- --out migrasi/journal-YYYY-MM-DD.sql` lalu jalankan file itu
+setelah migration baru.
 
 ## Catatan
 

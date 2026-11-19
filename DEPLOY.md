@@ -75,31 +75,49 @@ lama, dan kredensial lokal ikut terupload.
 
        psql -h localhost -U USER -d DB -c "select split_part(email,'@',1) as u, count(*) from users group by 1 having count(*) > 1;"
 
-2. Upload folder `drizzle/` ke `/home/USER/apps/kelasbit/drizzle`, lalu jalankan
-   berurutan dengan `-v ON_ERROR_STOP=1`:
+2. Upload file migrasi **baru** (dan file jurnal) ke `~/migrasi/`, lalu jalankan
+   **hanya file yang belum diterapkan**, satu per satu:
 
-       psql ... -f drizzle/0003_icy_johnny_blaze.sql
-       psql ... -f drizzle/0004_fuzzy_sersi.sql
-       psql ... -f drizzle/0005_solid_paladin.sql
-       psql ... -f drizzle/0006_smiling_titania.sql
-       psql ... -f drizzle/0007_absurd_baron_zemo.sql
-       psql ... -f drizzle/0008_clear_marvel_zombies.sql
+       psql ... -1 -v ON_ERROR_STOP=1 -f ~/migrasi/0009_NAMA_MIGRASI_BARU.sql
 
-3. Catat jurnal Drizzle supaya `npm run db:migrate` berikutnya tidak mengulang
-   migrasi lama (`hash` = sha256 isi file SQL):
+   **Jangan jalankan ulang migrasi yang sudah tercatat.**
+   Contoh rilis 19 Nov 2026: `0006`, `0007`, `0008` (hanya jika belum ada).
 
-       INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES
-        ('6a84a8f9fc9e3b12fc20e43d1697e15a531da2be609524afeae33bf69118eb44', 1794917966073),
-        ('dbfc8de35b4ce97f685a33077e2ef17985a274329fd185d439bf80b798b1f1f8', 1794919938764),
-        ('03edde9f67a0faa19e08fb3b035d09462608da650a67832cb4923b456971e307', 1794923654786),
-        ('e72b3a13500359f7f3c9b7ce3f8710e1f6c8170d61415b133a9582475c216d1e', 1795047073743),
-        ('18ec40521b271928bd39ea1f8b2d97fab9da58c191044e24d6aad14c50ec2760', 1795049833110),
-        ('640d60f5945a5b40880d16343773ac82370621203415ebe8bdf5c9c4b2263266', 1795053286767);
+3. Sinkronkan jurnal Drizzle. **Jangan menyusun hash manual**; gunakan generator
+   dari lokal:
 
-   Cek: `select count(*) from drizzle.__drizzle_migrations;` → **9**.
-   Kalau produksi ternyata belum punya tabel `drizzle.__drizzle_migrations`
-   (artinya dulu migrasi dijalankan manual tanpa Drizzle), jalankan 0000–0008
-   sekaligus lalu catat hash masing-masing.
+       npm run db:journal -- --out migrasi/journal-YYYY-MM-DD.sql
+
+   Upload file jurnal ke `~/migrasi/`, lalu jalankan di cPanel:
+
+       psql ... -1 -v ON_ERROR_STOP=1 -f ~/migrasi/journal-YYYY-MM-DD.sql
+       psql ... -c "select count(*) from drizzle.__drizzle_migrations;"
+
+   Jumlahnya harus sama dengan jumlah file `drizzle/*.sql` lokal.
+
+   Kalau produksi belum punya `drizzle.__drizzle_migrations`, **jangan menjalankan
+   semua migrasi dari nol**. Cek tabel/kolom yang sudah ada, jalankan hanya migrasi
+   yang belum, lalu jalankan file jurnal hasil generator.
+
+### 2c. Jurnal migrasi manual (tanpa drizzle-kit di produksi)
+
+Bundle standalone tidak berisi `drizzle-kit`, jadi migrasi manual via `psql` tidak
+otomatis mencatat ke `drizzle.__drizzle_migrations`. Setelah menjalankan SQL baru,
+generate file jurnal dari lokal:
+
+```powershell
+npm run db:journal -- --out migrasi/journal-YYYY-MM-DD.sql
+```
+
+Upload `journal-YYYY-MM-DD.sql` ke `~/migrasi/`, lalu di cPanel:
+
+```bash
+psql -1 -v ON_ERROR_STOP=1 -f ~/migrasi/journal-YYYY-MM-DD.sql
+psql -c "select count(*) from drizzle.__drizzle_migrations;"
+```
+
+File jurnal mencatat hash **semua** migrasi dan aman dijalankan berulang
+(`WHERE NOT EXISTS`). Jumlah akhir harus sama dengan jumlah file `drizzle/*.sql`.
 
 ---
 
