@@ -9,6 +9,9 @@ import {
   DEFAULT_MAINTENANCE_TITLE,
   MAINTENANCE_MESSAGE_KEY,
   MAINTENANCE_MODE_KEY,
+  MAINTENANCE_OVERRIDE_START_KEY,
+  MAINTENANCE_OVERRIDE_VALUE_KEY,
+  MAINTENANCE_START_KEY,
   MAINTENANCE_STUDENT_TOKEN_KEY,
   MAINTENANCE_TITLE_KEY,
   MAINTENANCE_TOKEN_KEY,
@@ -22,6 +25,9 @@ export {
   DEFAULT_MAINTENANCE_TITLE,
   MAINTENANCE_MESSAGE_KEY,
   MAINTENANCE_MODE_KEY,
+  MAINTENANCE_OVERRIDE_START_KEY,
+  MAINTENANCE_OVERRIDE_VALUE_KEY,
+  MAINTENANCE_START_KEY,
   MAINTENANCE_STUDENT_TOKEN_KEY,
   MAINTENANCE_TITLE_KEY,
   MAINTENANCE_TOKEN_KEY,
@@ -34,7 +40,10 @@ const SETTING_KEYS = [
   MAINTENANCE_MODE_KEY,
   MAINTENANCE_TITLE_KEY,
   MAINTENANCE_MESSAGE_KEY,
+  MAINTENANCE_START_KEY,
   MAINTENANCE_UNTIL_KEY,
+  MAINTENANCE_OVERRIDE_VALUE_KEY,
+  MAINTENANCE_OVERRIDE_START_KEY,
   MAINTENANCE_TOKEN_KEY,
 ];
 
@@ -43,14 +52,26 @@ const MIN_ENV_TOKEN_LENGTH = 16;
 
 const JAKARTA_TIME_ZONE = "Asia/Jakarta";
 
+export type MaintenanceScheduleState =
+  | "none"
+  | "pending"
+  | "active"
+  | "expired";
+
 export type MaintenanceSetting = {
   enabled: boolean;
+  /** Nilai saklar manual mentah (tanpa memperhitungkan jadwal). */
+  manualEnabled: boolean;
   title: string;
   message: string;
+  /** Awal jendela maintenance terjadwal. */
+  start: Date | null;
+  /** Akhir jendela maintenance / jam buka otomatis. */
   until: Date | null;
   updatedAt: Date | null;
   /** Jadwal buka otomatis sudah lewat (mode maintenance nonaktif karena waktu). */
   expired: boolean;
+  scheduleState: MaintenanceScheduleState;
   /** Nilai dari Environment Variables cPanel menimpa nilai di database. */
   envControlled: boolean;
 };
@@ -196,20 +217,78 @@ export const getMaintenanceSetting = cache(
 
     const modeRow = rows.get(MAINTENANCE_MODE_KEY);
     const storedEnabled = modeRow?.value === "true" || modeRow?.value === "1";
+    const start = parseStoredDate(rows.get(MAINTENANCE_START_KEY)?.value);
     const until = parseStoredDate(rows.get(MAINTENANCE_UNTIL_KEY)?.value);
+    const overrideValue =
+      rows.get(MAINTENANCE_OVERRIDE_VALUE_KEY)?.value?.trim() || null;
+    const overrideStart = parseStoredDate(
+      rows.get(MAINTENANCE_OVERRIDE_START_KEY)?.value,
+    );
     const envControlled = envMode !== null;
-    const expired =
-      !envControlled &&
-      storedEnabled &&
-      until !== null &&
-      until.getTime() <= Date.now();
-    const enabled = envControlled ? envMode : storedEnabled && !expired;
+    const now = Date.now();
+
+    // Override manual hanya berlaku untuk jendela jadwal yang sama
+    // (dibandingkan per menit agar aman dari perbedaan detik). Jendela boleh
+    // tanpa waktu selesai (open-ended).
+    const overrideApplies =
+      start !== null &&
+      overrideStart !== null &&
+      Math.floor(overrideStart.getTime() / 60_000) ===
+        Math.floor(start.getTime() / 60_000) &&
+      (overrideValue === "on" || overrideValue === "off");
+
+    let scheduleState: MaintenanceScheduleState = "none";
+    let enabled: boolean;
+
+    if (start && until) {
+      if (now >= until.getTime()) {
+        // Jadwal selesai: situs normal, kecuali saklar manual dinyalakan
+        // setelah jam selesai (mode diperbarui setelah `until`).
+        scheduleState = "expired";
+        enabled =
+          storedEnabled &&
+          modeRow !== undefined &&
+          modeRow.updatedAt.getTime() > until.getTime();
+      } else if (now >= start.getTime()) {
+        // Jendela berjalan: otomatis aktif, kecuali ada override manual.
+        scheduleState = "active";
+        enabled = overrideApplies ? overrideValue === "on" : true;
+      } else {
+        scheduleState = "pending";
+        enabled = storedEnabled;
+      }
+    } else if (start) {
+      // Jadwal tanpa waktu selesai: aktif sejak `start` dan tetap aktif
+      // sampai guru mematikannya manual (override).
+      if (now >= start.getTime()) {
+        scheduleState = "active";
+        enabled = overrideApplies ? overrideValue === "on" : true;
+      } else {
+        scheduleState = "pending";
+        enabled = storedEnabled;
+      }
+    } else if (until) {
+      // Data lama: hanya jam buka otomatis untuk maintenance manual.
+      const passed = now >= until.getTime();
+      scheduleState = passed ? "expired" : "none";
+      enabled =
+        storedEnabled &&
+        (!passed ||
+          (modeRow !== undefined && modeRow.updatedAt.getTime() > until.getTime()));
+    } else {
+      enabled = storedEnabled;
+    }
+
+    const expired = scheduleState === "expired";
+
+    if (envControlled) enabled = envMode;
 
     const storedTitle = rows.get(MAINTENANCE_TITLE_KEY)?.value?.trim();
     const storedMessage = rows.get(MAINTENANCE_MESSAGE_KEY)?.value?.trim();
 
     return {
       enabled,
+      manualEnabled: storedEnabled,
       title: (
         envEnabled && envTitle ? envTitle : storedTitle || DEFAULT_MAINTENANCE_TITLE
       ).slice(0, MAX_MAINTENANCE_TITLE),
@@ -218,9 +297,11 @@ export const getMaintenanceSetting = cache(
           ? envMessage
           : storedMessage || DEFAULT_MAINTENANCE_MESSAGE
       ).slice(0, MAX_MAINTENANCE_MESSAGE),
+      start,
       until,
       updatedAt: modeRow?.updatedAt ?? null,
       expired,
+      scheduleState,
       envControlled,
     };
   },

@@ -30,14 +30,26 @@ const dateTimeFormatter = new Intl.DateTimeFormat("id-ID", {
   minute: "2-digit",
 });
 
+/** Pratinjau nilai `<input type="datetime-local">` (sudah dalam WIB). */
+function formatLocalDateTime(value: string): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value);
+  if (!match) return null;
+
+  const [, year, month, day, hour, minute] = match;
+  return `${day}/${month}/${year} ${hour}.${minute} WIB`;
+}
+
 export function MaintenanceSetting({
   enabled,
   title,
   message,
+  startValue,
+  startLabel,
   untilValue,
   untilLabel,
   updatedAt,
   expired,
+  scheduleState,
   envControlled,
   loginPath,
   studentLoginPath,
@@ -46,10 +58,13 @@ export function MaintenanceSetting({
   enabled: boolean;
   title: string;
   message: string;
+  startValue: string;
+  startLabel: string | null;
   untilValue: string;
   untilLabel: string | null;
   updatedAt: Date | null;
   expired: boolean;
+  scheduleState: "none" | "pending" | "active" | "expired";
   envControlled: boolean;
   loginPath: string;
   studentLoginPath: string;
@@ -68,6 +83,7 @@ export function MaintenanceSetting({
   const [isEnabled, setIsEnabled] = useState(enabled);
   const [titleValue, setTitleValue] = useState(title);
   const [messageValue, setMessageValue] = useState(message);
+  const [startLocal, setStartLocal] = useState(startValue);
   const [untilLocal, setUntilLocal] = useState(untilValue);
 
   useRefreshOnSuccess(state);
@@ -78,8 +94,9 @@ export function MaintenanceSetting({
     setIsEnabled(enabled);
     setTitleValue(title);
     setMessageValue(message);
+    setStartLocal(startValue);
     setUntilLocal(untilValue);
-  }, [enabled, title, message, untilValue]);
+  }, [enabled, title, message, startValue, untilValue]);
 
   const activeLoginPath =
     (rotateState.success && rotateState.loginPath) ||
@@ -95,10 +112,27 @@ export function MaintenanceSetting({
       ? "Aktif (env)"
       : "Nonaktif (env)"
     : enabled
-      ? "Aktif"
+      ? scheduleState === "active"
+        ? "Aktif (jadwal)"
+        : "Aktif"
       : expired
-        ? "Nonaktif — jadwal lewat"
-        : "Nonaktif";
+        ? "Nonaktif — jadwal selesai"
+        : scheduleState === "pending"
+          ? "Terjadwal"
+          : "Nonaktif";
+
+  const statusClass = enabled
+    ? "shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100"
+    : scheduleState === "pending"
+      ? "shrink-0 rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide text-sky-700 ring-1 ring-sky-100"
+      : "shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-500 ring-1 ring-slate-200";
+
+  const localStartLabel = formatLocalDateTime(startLocal);
+  const localUntilLabel = formatLocalDateTime(untilLocal);
+  const schedulePreview =
+    localStartLabel && localUntilLabel
+      ? `${localStartLabel} → ${localUntilLabel}`
+      : null;
 
   return (
     <section className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(16,12,40,0.04)] sm:p-6">
@@ -118,13 +152,7 @@ export function MaintenanceSetting({
           </div>
         </div>
 
-        <span
-          className={
-            enabled
-              ? "shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100"
-              : "shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-500 ring-1 ring-slate-200"
-          }
-        >
+        <span className={statusClass}>
           {statusLabel}
         </span>
       </div>
@@ -177,6 +205,20 @@ export function MaintenanceSetting({
           ) {
             event.preventDefault();
           }
+
+          const scheduleEdited =
+            startLocal !== startValue || untilLocal !== untilValue;
+
+          if (
+            scheduleEdited &&
+            startLocal &&
+            !untilLocal &&
+            !window.confirm(
+              "Jadwalkan maintenance tanpa waktu selesai? Situs akan tetap maintenance sampai Anda mematikannya manual.",
+            )
+          ) {
+            event.preventDefault();
+          }
         }}
         className="mt-6"
       >
@@ -189,7 +231,8 @@ export function MaintenanceSetting({
             </p>
             <p className="mt-1 max-w-md text-[11px] leading-relaxed text-slate-500">
               Selama aktif, pengunjung hanya melihat halaman maintenance. Guru
-              tetap bisa masuk lewat URL khusus di atas dan mengakses area guru.
+              tetap bisa masuk lewat URL khusus di atas. Mengubah saklar ini
+              hanya menimpa status saat ini; jadwal otomatis tetap berjalan.
             </p>
           </div>
 
@@ -262,7 +305,24 @@ export function MaintenanceSetting({
           <label className="block">
             <span className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
               <CalendarDays className="h-3.5 w-3.5" />
-              Buka otomatis pada (WIB)
+              Mulai otomatis pada (WIB)
+            </span>
+            <input
+              type="datetime-local"
+              name="start"
+              value={startLocal}
+              onChange={(event) => setStartLocal(event.target.value)}
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-800 outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-100"
+            />
+            <span className="mt-1 block text-[10px] font-medium text-slate-400">
+              Waktu situs mulai ditutup otomatis.
+            </span>
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+              <CalendarDays className="h-3.5 w-3.5" />
+              Selesai otomatis pada (WIB) — opsional
             </span>
             <input
               type="datetime-local"
@@ -272,22 +332,87 @@ export function MaintenanceSetting({
               className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-800 outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-100"
             />
             <span className="mt-1 block text-[10px] font-medium text-slate-400">
-              Kosongkan untuk membuka manual.
+              Kosongkan agar maintenance tetap aktif sampai dimatikan manual.
             </span>
           </label>
+        </div>
 
-          <div className="flex flex-col justify-end">
-            <p className="text-[11px] leading-relaxed text-slate-500">
-              {untilLabel
-                ? `Terjadwal buka otomatis: ${untilLabel}.`
-                : "Belum ada jadwal buka otomatis."}
-            </p>
-            {expired ? (
-              <p className="mt-1 text-[11px] font-semibold text-amber-700">
-                Jadwal sebelumnya sudah lewat — situs otomatis normal.
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5">
+          <div className="min-w-0 text-[11px] leading-relaxed text-slate-500">
+            {schedulePreview ? (
+              <p>
+                <span className="font-bold text-slate-700">Jadwal:</span>{" "}
+                {schedulePreview}.
+              </p>
+            ) : localStartLabel ? (
+              <p>
+                <span className="font-bold text-slate-700">Jadwal:</span> mulai{" "}
+                {localStartLabel}, tanpa waktu selesai.
+              </p>
+            ) : localUntilLabel ? (
+              <p>
+                <span className="font-bold text-slate-700">
+                  Buka otomatis:
+                </span>{" "}
+                {localUntilLabel}. Isi waktu mulai untuk menjadwalkan
+                maintenance penuh.
+              </p>
+            ) : startLabel && untilLabel ? (
+              <p>
+                <span className="font-bold text-slate-700">Jadwal:</span>{" "}
+                {startLabel} → {untilLabel}.
+              </p>
+            ) : startLabel ? (
+              <p>
+                <span className="font-bold text-slate-700">Jadwal:</span> mulai{" "}
+                {startLabel}, tanpa waktu selesai.
+              </p>
+            ) : (
+              <p>
+                Belum ada jadwal otomatis. Isi kedua waktu di atas untuk
+                menjadwalkan maintenance sekali jalan.
+              </p>
+            )}
+            {scheduleState === "pending" ? (
+              <p className="mt-0.5 font-semibold text-sky-700">
+                Menunggu waktu mulai — situs masih normal.
+              </p>
+            ) : null}
+            {scheduleState === "active" ? (
+              !enabled ? (
+                <p className="mt-0.5 font-semibold text-amber-700">
+                  Override manual aktif — situs sedang dibuka.
+                </p>
+              ) : untilLabel ? (
+                <p className="mt-0.5 font-semibold text-emerald-700">
+                  Jadwal sedang berjalan — situs otomatis maintenance.
+                </p>
+              ) : (
+                <p className="mt-0.5 font-semibold text-emerald-700">
+                  Jadwal berjalan tanpa waktu selesai — situs maintenance
+                  sampai dimatikan manual.
+                </p>
+              )
+            ) : null}
+            {scheduleState === "expired" ? (
+              <p className="mt-0.5 font-semibold text-amber-700">
+                Jadwal terakhir sudah selesai — situs normal otomatis.
               </p>
             ) : null}
           </div>
+
+          {startLocal || untilLocal ? (
+            <button
+              type="button"
+              onClick={() => {
+                setStartLocal("");
+                setUntilLocal("");
+              }}
+              className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900"
+            >
+              Kosongkan jadwal
+            </button>
+          ) : null}
         </div>
 
         {state.error ? (
@@ -336,8 +461,11 @@ export function MaintenanceSetting({
       <div className="mt-5 grid gap-2 border-t border-slate-100 pt-4 text-[11px] font-medium text-slate-500 sm:grid-cols-2">
         <p>• Halaman publik dan area siswa ditutup untuk sesi biasa.</p>
         <p>• Guru & siswa bisa masuk lewat URL khusus di atas.</p>
-        <p>• Waktu buka otomatis memakai zona Asia/Jakarta (WIB).</p>
-        <p>• Tanpa cron: situs terbuka saat waktu yang dijadwalkan lewat.</p>
+        <p>• Jadwal mulai/selesai memakai zona Asia/Jakarta (WIB).</p>
+        <p>• Tanpa cron: status mengikuti waktu saat situs diakses.</p>
+        <p>• Saklar manual hanya override sementara, tidak membatalkan jadwal.</p>
+        <p>• Kosongkan kedua waktu untuk memakai mode manual saja.</p>
+        <p>• Waktu selesai opsional: tanpa selesai, matikan manual untuk membuka situs.</p>
       </div>
     </section>
   );

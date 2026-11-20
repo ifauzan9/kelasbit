@@ -1,6 +1,6 @@
 # Status Pengerjaan
 
-Terakhir diperbarui: 19 November 2026
+Terakhir diperbarui: 20 November 2026
 
 ## Yang sudah jadi
 
@@ -10,6 +10,16 @@ Terakhir diperbarui: 19 November 2026
 - `src/lib/db/index.ts` — pool `pg` lazy + instance Drizzle
 - `src/app/api/health/route.ts` — health check, terverifikasi `{"status":"ok","db":true}`
 - Landing page: `src/app/page.tsx`, `src/components/site-header.tsx`, `site-footer.tsx`, `icons.tsx`, `globals.css`
+- Ikon web (favicon + apple touch icon) dari `kelasbit-icon.png`:
+  `src/app/icon.png` (256px) dan `src/app/apple-icon.png` (180px)
+- Logo `kelasbit-icon.png` juga dipakai di header publik, kartu login siswa,
+  login guru (normal & maintenance), dan halaman maintenance
+  (komponen `src/components/kelasbit-logo.tsx`, aset
+  `public/kelasbit-icon.png`)
+- Tombol CTA hero landing page disederhanakan menjadi satu tombol **Login** ke `/login`
+- Label "Jelajahi Pelajaran", judul "Apa yang akan kita pelajari?", dan dua kartu
+  mata pelajaran dihapus dari landing page; menu "Mata Pelajaran" ikut dihapus
+  karena section `#mata-pelajaran` sudah tidak ada
 - `README.md` — panduan dev lokal (Docker) + deploy cPanel
 - `DEPLOY.md` — checklist upload fitur baru ke cPanel (backup DB, migrasi, rollback)
 - `AGENTS.md` — aturan kerja agent, termasuk aturan keamanan deploy & database
@@ -282,12 +292,24 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
 - Token: 6 karakter uppercase dari alphabet tanpa huruf/angka ambigu (`I/O/0/1`).
   Input siswa tidak peka huruf besar/kecil, spasi, atau tanda hubung (`FJA-6NE`).
   Disimpan plaintext karena guru perlu menampilkannya kembali.
-- Pengelolaan di `/guru/kelas` (per kelas, tombol **Token**):
-  - switch **Aktif/Nonaktif** (menyalakan tanpa token akan membuat token otomatis);
-  - tampilkan + **Salin** token;
-  - **Ganti token** (token lama langsung mati) dan **Hapus token**
-    (sekaligus menonaktifkan login token);
-  - badge **Token aktif** di baris kelas.
+- Pengelolaan di `/guru/kelas` (per kelas):
+  - switch **Login token aktif/nonaktif** langsung di baris kelas
+    (menyalakan tanpa token akan membuat token otomatis);
+  - tombol **Token** membuka panel: tampilkan + **Salin** token;
+  - **Token manual**: guru bisa mengetik sendiri 6 karakter (huruf/angka tanpa
+    `I/O/0/1`); server menormalkan input dan menolak token yang sudah dipakai
+    kelas lain (unique index) dengan pesan yang jelas;
+  - **Buat/Ganti token** otomatis (token lama langsung mati) dan **Hapus token**
+    (sekaligus menonaktifkan login token).
+- **Saklar global** `token_login_enabled` di `/guru/pengaturan` (kartu
+  **Login Token Kelas**):
+  - default **aktif** kalau baris `app_settings` belum ada;
+  - saat nonaktif, tab **Token Kelas** disembunyikan di `/login/siswa` dan
+    `/siswa-masuk/<token>`, dan Server Action token menolak semua percobaan
+    (reason log `token_global_off`) — berlaku untuk semua kelas;
+  - token & switch per kelas tidak dihapus, hanya tidak bisa dipakai;
+  - login username/password tetap berjalan; `/guru/kelas` menampilkan banner
+    peringatan saat global nonaktif.
 - Login siswa (`/login/siswa`):
   - tab **Username** (login lama, tetap ada) dan **Token Kelas**;
   - langkah 1: masukkan token → server memvalidasi (rate limit per IP) dan
@@ -364,15 +386,44 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
 
 ### Mode maintenance
 
-- Pengaturan disimpan di `app_settings` (`maintenance_mode`, `maintenance_title`,
-  `maintenance_message`, `maintenance_until`, `maintenance_guru_token`,
-  `maintenance_siswa_token`). Migration `0010_lovely_tarot.sql` menambah
-  `sessions.maintenance_access` (additive).
+- Pengaturan disimpan di `app_settings` (`maintenance_mode`, `maintenance_start`,
+  `maintenance_title`, `maintenance_message`, `maintenance_until`,
+  `maintenance_override_value`, `maintenance_override_start`,
+  `maintenance_guru_token`, `maintenance_siswa_token`).
+  Migration `0010_lovely_tarot.sql` menambah `sessions.maintenance_access`
+  (additive). Fitur jadwal otomatis **tidak butuh migration** (key-value).
 - Kartu **Mode Maintenance** di `/guru/pengaturan`:
-  - switch aktif/nonaktif, judul halaman, pesan, dan **buka otomatis pada (WIB)**
-    opsional (disimpan sebagai ISO UTC, input dibaca sebagai Asia/Jakarta +07:00);
-  - status efektif, waktu terakhir diubah, serta peringatan bila jadwal sudah lewat;
+  - switch manual, judul halaman, pesan;
+  - **jadwal sekali jalan**: input **mulai otomatis** dan **selesai otomatis (WIB)**;
+    waktu selesai **opsional** (kosong = maintenance berjalan sampai dimatikan
+    manual), plus tombol **Kosongkan jadwal**;
+  - ringkasan jadwal + badge status **Terjadwal / Aktif (jadwal) /
+    Nonaktif — jadwal selesai**;
+  - data lama yang hanya punya jam buka otomatis tetap didukung;
   - URL login **guru** dan URL login **siswa** + tombol salin dan **Ganti URL**.
+- Penjadwalan otomatis (tanpa cron — dihitung saat request; input WIB disimpan
+  ISO UTC):
+  - sebelum `maintenance_start` → status mengikuti switch manual (biasanya normal);
+  - di dalam `[start, until)` → maintenance **aktif otomatis**;
+  - `until` kosong → maintenance **aktif sejak `start` dan tetap aktif** sampai
+    dimatikan manual (open-ended);
+  - setelah `until` → normal otomatis;
+  - switch manual saat jendela aktif berfungsi sebagai **override sementara**
+    (`maintenance_override_value` + `maintenance_override_start`, terikat ke
+    jam mulai jadwal) dan tidak membatalkan jadwal, baik jadwal dengan akhir
+    maupun open-ended;
+  - setelah jadwal selesai, switch manual bisa dipakai lagi seperti biasa
+    (perubahan manual dihitung jika terjadi setelah `until`).
+- Banner informasi jadwal (`src/components/maintenance-schedule-notice.tsx`):
+  - muncul saat jadwal **pending** di beranda, login siswa, dan dashboard guru;
+  - di dashboard guru juga muncul saat jadwal **active** (maintenance otomatis
+    sedang berjalan), di samping banner amber URL login guru yang sudah ada;
+  - muncul saat **pending/active** di seluruh area dashboard siswa;
+  - teks: "Maintenance terjadwal — Mulai … WIB" (dengan/tanpa waktu selesai)
+    atau "Maintenance sedang berlangsung — Perkiraan selesai … WIB";
+  - sengaja **tidak** memakai frasa "sampai dimatikan manual";
+  - otomatis tersembunyi saat tidak ada jadwal, jadwal selesai, atau mode
+    dikontrol Environment Variables.
 - Saat aktif:
   - `(public)` layout → `/maintenance` (landing, `/login`, `/login/siswa`);
   - `/login/guru` biasa ditutup → `/maintenance`;
@@ -390,14 +441,27 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
     `/siswa` dan `/siswa/profil`;
   - halaman biasa `/login/siswa` tetap tertutup;
   - token salah → 404, `noindex`, maintenance nonaktif → redirect `/login/siswa`.
-- Saat status maintenance berubah (nyala/mati), flag `maintenance_access` semua sesi
-  di-reset agar akses maintenance tidak terbawa ke periode berikutnya.
+- Saat status maintenance berubah (nyala/mati) atau jadwal disimpan, flag
+  `maintenance_access` semua sesi di-reset. Untuk maintenance terjadwal, area siswa
+  juga menolak sesi dengan `maintenanceAccess` yang dibuat sebelum jam mulai jadwal
+  (dibandingkan lewat `sessions.created_at`), sehingga sesi dari jendela maintenance
+  sebelumnya tidak bisa dipakai untuk lolos otomatis.
+- **Logout otomatis siswa saat maintenance** (berlaku manual & terjadwal):
+  - `getCurrentUser()` menghapus sesi siswa login biasa dan mengembalikan `null`;
+  - saat maintenance dinyalakan manual, semua sesi siswa langsung dihapus dari DB;
+  - sesi yang dibuat lewat `/siswa-masuk/<token>` **setelah** jadwal mulai tetap
+    diizinkan (tidak ikut di-logout);
+  - `/sesi` membersihkan cookie sesi lalu redirect ke
+    `/maintenance?sesi=berakhir`; halaman maintenance menampilkan catatan
+    "Sesi Anda berakhir karena maintenance";
+  - logout terasa pada request/refresh berikutnya (tanpa polling), dan sesi guru
+    tidak terpengaruh.
 - Halaman `/maintenance` di luar route group (tanpa header/footer situs), judul +
   pesan kustom, perkiraan selesai + hitung mundur bila dijadwalkan, dan **tanpa
   tautan login apa pun**. Balasan HTTP 200 dengan `noindex` (App Router tidak bisa
   mengeset 503 dari layout).
-- Buka otomatis dicek saat request — tanpa cron. `maintenance_until` yang lewat
-  membuat status efektif nonaktif, dan kartu pengaturan menandainya.
+- Buka/tutup otomatis dicek saat request — tanpa cron: `maintenance_start` dan
+  `maintenance_until` menentukan jendela, dan kartu pengaturan menandai status jadwal.
 - Override cPanel: `MAINTENANCE_MODE`, `MAINTENANCE_GURU_TOKEN`,
   `MAINTENANCE_TITLE`, `MAINTENANCE_MESSAGE` (env mengalahkan DB; perlu Restart).
   Token env < 16 karakter diabaikan. Prosedur pemulihan ada di `DEPLOY.md`.
@@ -417,6 +481,32 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   `/siswa-masuk/<token>` redirect ke `/login/siswa`. `tsc --noEmit`, `npm run lint`,
   dan `npm run build` bersih; build standalone diuji (`/siswa-masuk/<token>` 200,
   token salah 404, `/login/siswa` 307 ke `/maintenance`). Data uji sudah dihapus.
+- Status jadwal otomatis (20 November 2026): diuji di lokal — jadwal mulai di masa
+  depan tampil **Terjadwal** dan situs normal; setelah jam mulai lewat, `/` dan
+  `/login/siswa` 307 ke `/maintenance`; override manual mati/nyala saat jendela
+  berjalan bekerja (situs 200/307) tanpa mengubah mode dasar; setelah jam selesai,
+  situs otomatis 200 dan badge **jadwal selesai**; switch manual tetap bisa
+  dinyalakan lagi setelah jadwal selesai; validasi form (hanya satu waktu,
+  mulai ≥ selesai, selesai di masa lalu) menolak dengan pesan jelas; data lama
+  `until`-only tetap menyimpan dan auto-open. **Jadwal open-ended** (hanya
+  `start`, tanpa `until`) juga diuji: status Terjadwal → aktif otomatis →
+  situs 307; override manual saat jadwal berjalan membuka situs (200) lalu
+  menutupnya lagi (307); validasi menolak `until` saja untuk jadwal baru dengan
+  pesan "Isi waktu mulai, atau kosongkan kedua waktu."
+- Status banner informasi (20 November 2026): diuji — banner **kuning** tampil di
+  `/`, `/login/siswa`, dashboard siswa, dan dashboard guru saat jadwal pending
+  (dengan maupun tanpa waktu selesai); teks tanpa "dimatikan manual"; banner
+  **hijau** tampil di dashboard siswa dan **dashboard guru** saat jadwal aktif
+  (login lewat halaman maintenance); banner hilang setelah jadwal dikosongkan.
+  Data uji dihapus. `tsc --noEmit` dan ESLint bersih.
+
+- Status logout otomatis (20 November 2026): diuji di lokal — sesi siswa reguler
+  dihapus saat maintenance manual dinyalakan (sesi guru tetap); request berikutnya
+  diarahkan ke `/login/siswa` → `/sesi` → `/maintenance?sesi=berakhir` dengan cookie
+  dibersihkan; sesi `/siswa-masuk/<token>` (maintenance access) tetap bisa membuka
+  dashboard (200); sesi maintenance kedaluwarsa dari jendela sebelumnya ikut dihapus;
+  catatan "Sesi Anda berakhir karena maintenance" tampil. Data uji dihapus.
+  `tsc --noEmit` dan ESLint bersih.
 
 ### Deploy produksi (19 November 2026)
 

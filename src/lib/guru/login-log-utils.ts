@@ -27,6 +27,7 @@ export const LOGIN_REASON_LABELS: Record<LoginLogReason, string> = {
   rate_limit: "Dibatasi rate limit",
   token_salah: "Token kelas salah",
   token_nonaktif: "Token kelas nonaktif",
+  token_global_off: "Login token global nonaktif",
   kelas_tanpa_siswa: "Kelas tanpa siswa aktif",
   siswa_tidak_ada: "Siswa tidak ada di kelas",
 };

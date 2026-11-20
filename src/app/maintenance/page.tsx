@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { CalendarDays, GraduationCap } from "@/components/icons";
+import { CalendarDays } from "@/components/icons";
+import { KelasbitLogo } from "@/components/kelasbit-logo";
 import { MaintenanceCountdown } from "@/components/maintenance-countdown";
 import {
   formatJakartaDateTime,
@@ -22,8 +23,14 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default async function MaintenancePage() {
+export default async function MaintenancePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sesi?: string | string[] }>;
+}) {
   const maintenance = await getMaintenanceSetting();
+  const params = await searchParams;
+  const sessionEnded = params.sesi === "berakhir";
 
   if (!maintenance.enabled) {
     redirect("/");
@@ -41,8 +48,8 @@ export default async function MaintenancePage() {
       />
 
       <div className="relative w-full max-w-xl text-center">
-        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 text-emerald-300 ring-1 ring-white/15 backdrop-blur">
-          <GraduationCap className="h-7 w-7" />
+        <span className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-white p-2 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.6)]">
+          <KelasbitLogo className="h-full w-full" priority />
         </span>
 
         <p className="mt-5 text-[11px] font-extrabold uppercase tracking-[0.24em] text-emerald-300/80">
@@ -56,6 +63,13 @@ export default async function MaintenancePage() {
         <p className="mx-auto mt-4 max-w-md whitespace-pre-line text-sm leading-relaxed text-white/70">
           {maintenance.message}
         </p>
+
+        {sessionEnded ? (
+          <p className="mx-auto mt-4 max-w-md rounded-xl border border-amber-300/25 bg-amber-400/10 px-4 py-2.5 text-xs leading-relaxed text-amber-100/90">
+            Sesi Anda berakhir karena maintenance. Silakan masuk lagi setelah
+            situs dibuka.
+          </p>
+        ) : null}
 
         {maintenance.until ? (
           <div className="mx-auto mt-8 max-w-sm rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur">

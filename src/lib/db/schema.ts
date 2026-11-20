@@ -95,6 +95,7 @@ export type LoginLogReason =
   | "rate_limit"
   | "token_salah"
   | "token_nonaktif"
+  | "token_global_off"
   | "kelas_tanpa_siswa"
   | "siswa_tidak_ada";
 

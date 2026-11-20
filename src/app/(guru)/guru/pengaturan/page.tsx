@@ -2,8 +2,12 @@ import type { Metadata } from "next";
 import { Settings } from "@/components/icons";
 import { LoginLocationSetting } from "@/components/guru/login-location-setting";
 import { MaintenanceSetting } from "@/components/guru/maintenance-setting";
+import { TokenLoginSetting } from "@/components/guru/token-login-setting";
 import { requireUser } from "@/lib/auth/session";
-import { getLoginLocationSetting } from "@/lib/settings/queries";
+import {
+  getLoginLocationSetting,
+  getTokenLoginSetting,
+} from "@/lib/settings/queries";
 import {
   formatJakartaDateTime,
   getMaintenanceSetting,
@@ -21,8 +25,9 @@ export const metadata: Metadata = {
 export default async function PengaturanPage() {
   await requireUser("guru");
 
-  const [locationSetting, maintenance] = await Promise.all([
+  const [locationSetting, tokenSetting, maintenance] = await Promise.all([
     getLoginLocationSetting(),
+    getTokenLoginSetting(),
     getMaintenanceSetting(),
   ]);
   const tokenInfo = await getOrCreateMaintenanceToken();
@@ -61,6 +66,12 @@ export default async function PengaturanPage() {
           enabled={maintenance.enabled}
           title={maintenance.title}
           message={maintenance.message}
+          startValue={
+            maintenance.start ? toJakartaDateTimeInput(maintenance.start) : ""
+          }
+          startLabel={
+            maintenance.start ? formatJakartaDateTime(maintenance.start) : null
+          }
           untilValue={
             maintenance.until ? toJakartaDateTimeInput(maintenance.until) : ""
           }
@@ -69,10 +80,16 @@ export default async function PengaturanPage() {
           }
           updatedAt={maintenance.updatedAt}
           expired={maintenance.expired}
+          scheduleState={maintenance.scheduleState}
           envControlled={maintenance.envControlled}
           loginPath={maintenanceLoginPath(tokenInfo.token)}
           studentLoginPath={maintenanceStudentLoginPath(studentToken)}
           tokenSource={tokenInfo.source}
+        />
+
+        <TokenLoginSetting
+          enabled={tokenSetting.enabled}
+          updatedAt={tokenSetting.updatedAt}
         />
 
         <LoginLocationSetting

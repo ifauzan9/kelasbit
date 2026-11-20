@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { BookOpen, LogIn } from "./icons";
+import { KelasbitLogo } from "./kelasbit-logo";
+import { LogIn } from "./icons";
 import { LinkPendingIndicator } from "./link-pending";
 
 const navigation = [
   { label: "Beranda", href: "#beranda", active: true },
-  { label: "Mata Pelajaran", href: "#mata-pelajaran" },
   { label: "Tentang", href: "#tentang" },
 ];
 
@@ -13,9 +13,10 @@ export function SiteHeader() {
     <header className="border-b border-slate-200/70 bg-white">
       <div className="mx-auto flex h-20 w-full max-w-6xl items-center justify-between gap-4 px-4 sm:gap-6 sm:px-6">
         <Link href="/" className="flex items-center gap-2.5 sm:gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 text-white shadow-lg shadow-brand-600/30 sm:h-11 sm:w-11">
-            <BookOpen className="h-6 w-6" />
-          </span>
+          <KelasbitLogo
+            className="h-11 w-11 sm:h-12 sm:w-12"
+            priority
+          />
           <span className="leading-tight">
             <span className="block text-[16px] font-extrabold tracking-tight text-slate-900 sm:text-[17px]">
               KelasBit

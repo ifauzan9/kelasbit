@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { AuthCard, AuthLink } from "@/components/auth-card";
-import { BookOpen } from "@/components/icons";
 import { SiswaLoginTabs } from "@/components/siswa-login-tabs";
 import { getCurrentUser } from "@/lib/auth/session";
 import {
@@ -9,6 +8,7 @@ import {
   getMaintenanceStudentToken,
   isValidMaintenanceToken,
 } from "@/lib/settings/maintenance";
+import { getTokenLoginEnabled } from "@/lib/settings/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -49,9 +49,11 @@ export default async function MaintenanceSiswaLoginPage({
     redirect("/siswa");
   }
 
+  const tokenEnabled = await getTokenLoginEnabled();
+
   return (
     <AuthCard
-      icon={<BookOpen className="h-6 w-6" />}
+      logo
       accent="brand"
       title="Login Siswa"
       description="Halaman login khusus selama mode maintenance."
@@ -61,7 +63,7 @@ export default async function MaintenanceSiswaLoginPage({
         </p>
       }
     >
-      <SiswaLoginTabs initialMode="token" />
+      <SiswaLoginTabs initialMode="token" tokenEnabled={tokenEnabled} />
     </AuthCard>
   );
 }

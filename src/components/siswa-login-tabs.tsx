@@ -13,19 +13,28 @@ const tabs: { id: LoginMode; label: string }[] = [
 
 export function SiswaLoginTabs({
   initialMode = "password",
+  tokenEnabled = true,
 }: {
   initialMode?: LoginMode;
+  tokenEnabled?: boolean;
 }) {
-  const [mode, setMode] = useState<LoginMode>(initialMode);
+  const availableTabs = tokenEnabled
+    ? tabs
+    : tabs.filter((tab) => tab.id !== "token");
+  const [mode, setMode] = useState<LoginMode>(
+    tokenEnabled ? initialMode : "password",
+  );
 
   return (
     <div>
       <div
         role="tablist"
         aria-label="Metode login siswa"
-        className="mb-5 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1"
+        className={`mb-5 grid gap-1 rounded-xl bg-slate-100 p-1 ${
+          availableTabs.length > 1 ? "grid-cols-2" : "grid-cols-1"
+        }`}
       >
-        {tabs.map((tab) => (
+        {availableTabs.map((tab) => (
           <button
             key={tab.id}
             type="button"

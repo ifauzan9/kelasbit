@@ -4,6 +4,10 @@ import { and, eq, ne, sql } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import { kelas } from "@/lib/db/schema";
+import {
+  isValidKelasTokenFormat,
+  normalizeKelasToken,
+} from "@/lib/auth/kelas-token-format";
 import { generateKelasToken } from "@/lib/auth/kelas-token";
 import { isValidAcademicYear } from "@/lib/guru/constants";
 
@@ -212,6 +216,63 @@ export async function setKelasTokenLogin(
   } catch (error) {
     console.error("kelas: gagal mengubah pengaturan token login", error);
     return { error: "Gagal menyimpan pengaturan token. Coba lagi." };
+  }
+}
+
+const TOKEN_FORMAT_ERROR =
+  "Token harus 6 karakter: huruf A–Z dan angka 2–9 (tanpa I, O, 0, 1).";
+const TOKEN_DUPLICATE_ERROR =
+  "Token itu sudah dipakai kelas lain. Gunakan token lain.";
+
+/** Simpan token yang diketik guru sendiri (harus unik dan sesuai format login). */
+export async function setKelasTokenManual(
+  _prevState: KelasTokenState,
+  formData: FormData,
+): Promise<KelasTokenState> {
+  await requireUser("guru");
+
+  const id = parseId(formData.get("id"));
+  if (!id) return { error: "Kelas tidak valid." };
+
+  const token = normalizeKelasToken(String(formData.get("token") ?? ""));
+
+  if (!isValidKelasTokenFormat(token)) {
+    return { error: TOKEN_FORMAT_ERROR };
+  }
+
+  try {
+    const [duplicate] = await getDb()
+      .select({ id: kelas.id })
+      .from(kelas)
+      .where(and(eq(kelas.loginToken, token), ne(kelas.id, id)))
+      .limit(1);
+
+    if (duplicate) return { error: TOKEN_DUPLICATE_ERROR };
+
+    const [updated] = await getDb()
+      .update(kelas)
+      .set({
+        loginToken: token,
+        tokenUpdatedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(kelas.id, id))
+      .returning({ enabled: kelas.tokenLoginEnabled });
+
+    if (!updated) return { error: "Kelas tidak ditemukan." };
+
+    return {
+      success: true,
+      stamp: Date.now(),
+      token,
+      enabled: updated.enabled,
+    };
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return { error: TOKEN_DUPLICATE_ERROR };
+    }
+    console.error("kelas: gagal menyimpan token manual", error);
+    return { error: "Gagal menyimpan token. Coba lagi." };
   }
 }
 

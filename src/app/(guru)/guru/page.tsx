@@ -12,10 +12,12 @@ import {
 } from "@/components/icons";
 import { MiniBar, StatCard } from "@/components/dashboard/stat-card";
 import { MateriManager } from "@/components/guru/materi-manager";
+import { MaintenanceScheduleNotice } from "@/components/maintenance-schedule-notice";
 import { requireUser } from "@/lib/auth/session";
 import { listKelas } from "@/lib/guru/kelas-queries";
 import { listMateri } from "@/lib/guru/queries";
 import { countSiswa } from "@/lib/guru/siswa-queries";
+import { getMaintenanceSetting } from "@/lib/settings/maintenance";
 
 export const metadata: Metadata = {
   title: "Kelas Guru — KelasBit",
@@ -36,10 +38,11 @@ const todayFormatter = new Intl.DateTimeFormat("id-ID", {
 
 export default async function GuruDashboardPage() {
   const user = await requireUser("guru");
-  const [rows, kelasRows, totalSiswa] = await Promise.all([
+  const [rows, kelasRows, totalSiswa, maintenance] = await Promise.all([
     listMateri(),
     listKelas(),
     countSiswa(),
+    getMaintenanceSetting(),
   ]);
 
   const materi = rows.map((row) => ({
@@ -66,6 +69,11 @@ export default async function GuruDashboardPage() {
 
   return (
     <>
+      {maintenance.scheduleState === "pending" ||
+      maintenance.scheduleState === "active" ? (
+        <MaintenanceScheduleNotice setting={maintenance} className="mb-5" />
+      ) : null}
+
       <section className="relative overflow-hidden rounded-3xl bg-linear-to-br from-emerald-500 via-emerald-700 to-teal-950 px-6 py-8 text-white shadow-[0_30px_60px_-40px_rgba(5,150,105,0.55)] sm:px-9 sm:py-10">
         <div
           aria-hidden

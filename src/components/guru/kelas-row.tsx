@@ -12,10 +12,17 @@ import {
 } from "@/components/icons";
 import { KelasTokenPanel } from "@/components/guru/kelas-token-panel";
 import { useRefreshOnSuccess } from "@/components/guru/use-refresh-on-success";
-import { deleteKelas, updateKelas, type KelasState } from "@/lib/guru/kelas-actions";
+import {
+  deleteKelas,
+  setKelasTokenLogin,
+  updateKelas,
+  type KelasState,
+  type KelasTokenState,
+} from "@/lib/guru/kelas-actions";
 import type { KelasView } from "@/lib/guru/types";
 
 const initialState: KelasState = {};
+const initialTokenState: KelasTokenState = {};
 
 const inputClass =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
@@ -50,6 +57,10 @@ export function KelasRow({
     deleteKelas,
     initialState,
   );
+  const [tokenState, tokenAction, tokenPending] = useActionState(
+    setKelasTokenLogin,
+    initialTokenState,
+  );
   const deleteWarning =
     kelas.studentCount > 0
       ? ` ${kelas.studentCount} siswa di kelas ini akan menjadi tanpa kelas (akunnya tidak dihapus).`
@@ -62,6 +73,7 @@ export function KelasRow({
 
   useRefreshOnSuccess(state);
   useRefreshOnSuccess(deleteState);
+  useRefreshOnSuccess(tokenState);
 
   useEffect(() => {
     if (!state.success) return;
@@ -172,13 +184,73 @@ export function KelasRow({
               <UserRound className="h-3 w-3" />
               {kelas.studentCount} siswa
             </span>
-            {kelas.tokenLoginEnabled ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100">
-                <KeyRound className="h-3 w-3" />
-                Token aktif
-              </span>
-            ) : null}
           </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <form
+              action={tokenAction}
+              onSubmit={(event) => {
+                if (
+                  !kelas.tokenLoginEnabled &&
+                  !kelas.loginToken &&
+                  !window.confirm(
+                    `Aktifkan login token untuk kelas ${kelas.name}? Token akan dibuat otomatis.`,
+                  )
+                ) {
+                  event.preventDefault();
+                }
+              }}
+            >
+              <input type="hidden" name="id" value={kelas.id} />
+              <input
+                type="hidden"
+                name="enabled"
+                value={String(!kelas.tokenLoginEnabled)}
+              />
+              <button
+                type="submit"
+                role="switch"
+                aria-checked={kelas.tokenLoginEnabled}
+                aria-label={
+                  kelas.tokenLoginEnabled
+                    ? `Nonaktifkan login token kelas ${kelas.name}`
+                    : `Aktifkan login token kelas ${kelas.name}`
+                }
+                disabled={tokenPending}
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  kelas.tokenLoginEnabled ? "bg-emerald-600" : "bg-slate-300"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                    kelas.tokenLoginEnabled ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </form>
+            <span className="text-[11px] font-semibold text-slate-500">
+              Login token{" "}
+              <span
+                className={
+                  kelas.tokenLoginEnabled
+                    ? "font-extrabold text-emerald-700"
+                    : "font-extrabold text-slate-400"
+                }
+              >
+                {kelas.tokenLoginEnabled ? "aktif" : "nonaktif"}
+              </span>
+            </span>
+          </div>
+
+          {tokenState.error ? (
+            <p
+              role="alert"
+              className="mt-1.5 flex items-start gap-1.5 text-[11px] font-medium text-rose-600"
+            >
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {tokenState.error}
+            </p>
+          ) : null}
         </div>
 
         <div className="flex shrink-0 items-center gap-1">

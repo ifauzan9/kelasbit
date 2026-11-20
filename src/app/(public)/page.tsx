@@ -5,27 +5,8 @@ import {
   MonitorCode,
   ShieldCheck,
 } from "@/components/icons";
-
-const subjects = [
-  {
-    title: "Informatika",
-    description:
-      "Mengenal komputer, teknologi digital, berpikir komputasional, dan dasar pemrograman.",
-    tags: ["Komputer", "Teknologi", "Python"],
-    iconWrap: "bg-brand-100 text-brand-600",
-    tagColor: "text-brand-600",
-    Icon: MonitorCode,
-  },
-  {
-    title: "Koding & Kecerdasan Artifisial",
-    description:
-      "Belajar logika, membuat algoritma, dasar koding, serta mengenal AI secara bijak.",
-    tags: ["KKA", "Algoritma", "AI"],
-    iconWrap: "bg-emerald-50 text-emerald-500",
-    tagColor: "text-emerald-600",
-    Icon: ChipAI,
-  },
-];
+import { MaintenanceScheduleNotice } from "@/components/maintenance-schedule-notice";
+import { getMaintenanceSetting } from "@/lib/settings/maintenance";
 
 function CodePreview() {
   return (
@@ -77,10 +58,14 @@ function CodePreview() {
   );
 }
 
-export default function Home() {
+export default async function Home() {
+  const maintenance = await getMaintenanceSetting();
+
   return (
     <main>
       <section id="beranda" className="mx-auto w-full max-w-6xl px-6 pt-6">
+        <MaintenanceScheduleNotice setting={maintenance} className="mb-4" />
+
         <div className="relative overflow-hidden rounded-[28px] bg-linear-to-br from-[#f6f3ff] via-[#f4f1ff] to-[#eef1ff] px-6 py-10 sm:rounded-[32px] sm:px-12 sm:py-12 lg:px-14 lg:py-14">
           <div
             aria-hidden
@@ -119,17 +104,11 @@ export default function Home() {
 
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <a
-                  href="#mata-pelajaran"
+                  href="/login"
                   className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-brand-600/30 transition-colors hover:bg-brand-700"
                 >
-                  Mulai Belajar
+                  Login
                   <ArrowRight className="h-4 w-4" />
-                </a>
-                <a
-                  href="#mata-pelajaran"
-                  className="inline-flex items-center rounded-xl border border-brand-200 bg-white px-6 py-3.5 text-sm font-semibold text-brand-700 shadow-sm transition-colors hover:bg-brand-50"
-                >
-                  Lihat Mata Pelajaran
                 </a>
               </div>
 
@@ -144,54 +123,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section
-        id="mata-pelajaran"
-        className="mx-auto w-full max-w-6xl px-6 pt-14"
-      >
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-[10px] font-extrabold uppercase tracking-[0.24em] text-brand-500">
-              Jelajahi Pelajaran
-            </p>
-            <h2 className="mt-2 text-[26px] font-extrabold tracking-tight text-slate-900 sm:text-[30px]">
-              Apa yang akan kita pelajari?
-            </h2>
-          </div>
-          <p className="max-w-xs text-[13px] leading-relaxed text-slate-400">
-            Dua pelajaran seru untuk memahami dunia teknologi.
-          </p>
-        </div>
-
-        <div className="mt-7 grid gap-6 md:grid-cols-2">
-          {subjects.map((subject) => (
-            <article
-              key={subject.title}
-              className="flex gap-5 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_1px_2px_rgba(16,12,40,0.04)] transition-all hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-24px_rgba(45,20,120,0.35)]"
-            >
-              <span
-                className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${subject.iconWrap}`}
-              >
-                <subject.Icon className="h-7 w-7" />
-              </span>
-              <div>
-                <h3 className="text-[17px] font-bold text-slate-900">
-                  {subject.title}
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-500">
-                  {subject.description}
-                </p>
-                <p
-                  className={`mt-3 text-[11px] font-bold tracking-wide ${subject.tagColor}`}
-                >
-                  {subject.tags.join(" • ")}
-                </p>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section id="tentang" className="mx-auto w-full max-w-6xl px-6 pt-8 pb-16">
+      <section id="tentang" className="mx-auto w-full max-w-6xl px-6 pt-14 pb-16">
         <div className="flex items-start gap-4 rounded-2xl border border-slate-200/70 bg-[#f1f0fa] px-6 py-5">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-brand-500 shadow-sm">
             <Info className="h-5 w-5" />

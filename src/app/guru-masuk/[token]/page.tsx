@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { AuthCard, AuthLink } from "@/components/auth-card";
-import { ShieldCheck } from "@/components/icons";
 import { LoginForm } from "@/components/login-form";
 import { getCurrentUser } from "@/lib/auth/session";
 import {
@@ -51,7 +50,7 @@ export default async function MaintenanceGuruLoginPage({
 
   return (
     <AuthCard
-      icon={<ShieldCheck className="h-6 w-6" />}
+      logo
       accent="emerald"
       title="Login Guru"
       description="Halaman login khusus selama mode maintenance."

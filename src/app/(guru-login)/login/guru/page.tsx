@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { AuthCard, AuthLink } from "@/components/auth-card";
-import { ChipAI } from "@/components/icons";
 import { LoginForm } from "@/components/login-form";
 
 export const metadata: Metadata = {
@@ -14,7 +13,7 @@ export const metadata: Metadata = {
 export default function LoginGuruPage() {
   return (
     <AuthCard
-      icon={<ChipAI className="h-6 w-6" />}
+      logo
       accent="emerald"
       title="Login Guru"
       description="Masuk untuk mengelola kelas, materi, dan nilai siswa."

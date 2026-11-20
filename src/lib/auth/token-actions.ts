@@ -18,7 +18,10 @@ import {
 import { getClientInfo } from "@/lib/auth/request-info";
 import { cleanupAuthData, createSession } from "@/lib/auth/session";
 import { getMaintenanceSetting } from "@/lib/settings/maintenance";
-import { getLoginLocationEnabled } from "@/lib/settings/queries";
+import {
+  getLoginLocationEnabled,
+  getTokenLoginEnabled,
+} from "@/lib/settings/queries";
 
 export type KelasLookupState = {
   error?: string;
@@ -31,6 +34,8 @@ export type KelasLookupState = {
 };
 
 const TOKEN_ERROR = "Token kelas tidak ditemukan. Periksa kembali.";
+const TOKEN_GLOBAL_OFF_ERROR =
+  "Login token kelas sedang dinonaktifkan. Gunakan username & password.";
 const SERVICE_ERROR = "Layanan sedang tidak tersedia. Coba lagi sebentar.";
 
 function tokenRateLimitKey(token: string): string {
@@ -66,6 +71,20 @@ export async function findKelasByToken(
     });
 
     return { error: LOGIN_BLOCK_MESSAGE };
+  }
+
+  if (!(await getTokenLoginEnabled())) {
+    await recordLoginLog({
+      identifier: "token kelas (global)",
+      role: "siswa",
+      status: "gagal",
+      method: "token_kelas",
+      reason: "token_global_off",
+      ip,
+      userAgent,
+    });
+
+    return { error: TOKEN_GLOBAL_OFF_ERROR };
   }
 
   if (!isValidKelasTokenFormat(token)) {
@@ -186,6 +205,20 @@ export async function loginWithKelasToken(
   }
 
   const { ip, userAgent } = await getClientInfo();
+
+  if (!(await getTokenLoginEnabled())) {
+    await recordLoginLog({
+      identifier: "token kelas (global)",
+      role: "siswa",
+      status: "gagal",
+      method: "token_kelas",
+      reason: "token_global_off",
+      ip,
+      userAgent,
+    });
+
+    return { error: TOKEN_GLOBAL_OFF_ERROR };
+  }
 
   let found:
     | {

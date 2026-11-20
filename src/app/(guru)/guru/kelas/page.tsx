@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { CalendarDays, ClipboardList, GraduationCap, Plus, Sparkles } from "@/components/icons";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { KelasManager } from "@/components/guru/kelas-manager";
 import { requireUser } from "@/lib/auth/session";
 import { academicYearOptions, currentAcademicYear } from "@/lib/guru/constants";
 import { listKelas } from "@/lib/guru/kelas-queries";
+import { getTokenLoginEnabled } from "@/lib/settings/queries";
 
 export const metadata: Metadata = {
   title: "Kelas — KelasBit",
@@ -14,6 +16,7 @@ export default async function KelasPage() {
   await requireUser("guru");
 
   const rows = await listKelas();
+  const tokenLoginEnabled = await getTokenLoginEnabled();
 
   const kelas = rows;
 
@@ -85,6 +88,26 @@ export default async function KelasPage() {
           tone="violet"
         />
       </div>
+
+      {tokenLoginEnabled ? null : (
+        <div className="mt-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
+          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[11px] font-extrabold text-amber-700">
+            !
+          </span>
+          <p className="leading-relaxed">
+            <span className="font-extrabold">Login token sedang nonaktif secara global.</span>{" "}
+            Token per kelas tidak bisa dipakai siswa sampai fitur ini
+            diaktifkan di{" "}
+            <Link
+              href="/guru/pengaturan"
+              className="font-bold underline underline-offset-2 hover:text-amber-900"
+            >
+              Pengaturan
+            </Link>
+            . Login username &amp; password tetap berjalan.
+          </p>
+        </div>
+      )}
 
       <KelasManager
         kelas={kelas}

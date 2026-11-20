@@ -6,6 +6,7 @@ import { getDb } from "@/lib/db";
 import { sessions, users, type Role } from "@/lib/db/schema";
 import { cleanupLoginLogs } from "@/lib/auth/login-log";
 import { cleanupLoginAttempts } from "@/lib/auth/rate-limit";
+import { getMaintenanceSetting } from "@/lib/settings/maintenance";
 
 const COOKIE_NAME = "kelasbit_session";
 const ROLE_COOKIE_NAME = "kelasbit_role";
@@ -19,6 +20,8 @@ export type SessionUser = {
   role: Role;
   /** Sesi siswa yang dibuat lewat halaman login khusus saat maintenance. */
   maintenanceAccess: boolean;
+  /** Waktu sesi dibuat, dipakai memvalidasi akses maintenance terjadwal. */
+  sessionCreatedAt: Date;
 };
 
 export function homePathForRole(role: Role): string {
@@ -71,6 +74,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
       user: users,
       expiresAt: sessions.expiresAt,
       maintenanceAccess: sessions.maintenanceAccess,
+      createdAt: sessions.createdAt,
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
@@ -90,6 +94,27 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     return null;
   }
 
+  // Selama maintenance, sesi siswa login biasa diputus. Hanya sesi yang dibuat
+  // lewat halaman login khusus maintenance (dan setelah jadwal mulai) yang
+  // diizinkan tetap masuk.
+  if (row.user.role === "siswa") {
+    const maintenance = await getMaintenanceSetting();
+
+    if (maintenance.enabled) {
+      const windowStartedAt =
+        maintenance.scheduleState === "active" ? maintenance.start : null;
+      const maintenanceLoginAllowed =
+        row.maintenanceAccess &&
+        (windowStartedAt === null ||
+          row.createdAt.getTime() >= windowStartedAt.getTime());
+
+      if (!maintenanceLoginAllowed) {
+        await db.delete(sessions).where(eq(sessions.id, sessionId));
+        return null;
+      }
+    }
+  }
+
   return {
     id: row.user.id,
     name: row.user.name,
@@ -97,6 +122,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     username: row.user.username,
     role: row.user.role as Role,
     maintenanceAccess: row.maintenanceAccess,
+    sessionCreatedAt: row.createdAt,
   };
 }
 

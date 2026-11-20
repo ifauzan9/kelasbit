@@ -1,8 +1,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { KelasbitLogo } from "./kelasbit-logo";
 
 type AuthCardProps = {
-  icon: ReactNode;
+  icon?: ReactNode;
+  logo?: boolean;
   accent: "brand" | "emerald";
   title: string;
   description: string;
@@ -17,6 +19,7 @@ const iconStyles = {
 
 export function AuthCard({
   icon,
+  logo = false,
   accent,
   title,
   description,
@@ -27,11 +30,15 @@ export function AuthCard({
     <main className="mx-auto flex w-full max-w-md flex-col justify-center px-4 py-16 sm:px-6">
       <div className="rounded-3xl border border-slate-200/70 bg-white p-7 shadow-[0_30px_60px_-40px_rgba(30,20,90,0.45)] sm:p-9">
         <div className="mb-8 flex flex-col items-center text-center">
-          <span
-            className={`mb-4 flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-lg ${iconStyles[accent]}`}
-          >
-            {icon}
-          </span>
+          {logo ? (
+            <KelasbitLogo className="mb-4 h-16 w-16" priority />
+          ) : (
+            <span
+              className={`mb-4 flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-lg ${iconStyles[accent]}`}
+            >
+              {icon}
+            </span>
+          )}
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">{title}</h1>
           <p className="mt-2 text-sm text-slate-500">{description}</p>
         </div>
