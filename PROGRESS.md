@@ -1,6 +1,6 @@
 # Status Pengerjaan
 
-Terakhir diperbarui: 20 November 2026
+Terakhir diperbarui: 21 November 2026
 
 ## Yang sudah jadi
 
@@ -49,6 +49,11 @@ Terakhir diperbarui: 20 November 2026
 | `/login/siswa` | Form login siswa (username/password atau token kelas) |
 | `/login/guru` | Form login guru |
 | `/siswa` | Dashboard siswa (wajib login sebagai siswa) |
+| `/siswa/lab` | Lab Coding Python (editor, console, stdin, riwayat) |
+| `/siswa/tugas` | Daftar tugas/ulangan/remedial coding |
+| `/siswa/tugas/<id>` | Kerjakan tugas coding + riwayat pengumpulan |
+| `/guru/tugas` | Kelola tugas/ulangan/remedial coding |
+| `/guru/tugas/<id>` | Detail tugas + pengumpulan + penilaian |
 | `/guru` | Dashboard guru (wajib login sebagai guru) |
 | `/guru/kelas` | Manajemen kelas + token login (wajib login sebagai guru) |
 | `/guru/siswa` | Manajemen siswa + akun login (wajib login sebagai guru) |
@@ -138,6 +143,9 @@ lewat `requireUser(role)` yang memvalidasi sesi ke database.
   tidak berubah setelah dibuat. Password awal 12 karakter acak tanpa karakter ambigu.
 - Kredensial ditampilkan sekali di panel dengan tombol salin (termasuk nama kelas);
   guru bisa **Reset** password kapan saja (sesi lama siswa langsung dihapus).
+  Reset wajib dikonfirmasi lewat panel **“Ya, reset password” / “Batal”** yang menyebut
+  nama siswa dan akibatnya; Server Action juga menolak request tanpa `confirm=yes`
+  (mencegah klik tidak sengaja).
 - Tombol **Aktif/Nonaktif** mengubah `is_active`; akun nonaktif ditolak saat login dan
   sesinya dihapus. **Hapus** menghapus akun permanen (sesi ikut terhapus via cascade).
 - Import massal mendukung **Excel `.xlsx`** dan tetap kompatibel dengan CSV lama
@@ -508,6 +516,89 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   catatan "Sesi Anda berakhir karena maintenance" tampil. Data uji dihapus.
   `tsc --noEmit` dan ESLint bersih.
 
+### Lab Coding Python (siswa)
+
+- Route `/siswa/lab`; menu **Lab Coding** di sidebar/mobile sekarang aktif.
+- Python berjalan di **Web Worker Pyodide 0.27.2** (`public/lab/pyodide-worker.js`,
+  dimuat dari CDN jsDelivr). Kode siswa tidak pernah dikirim ke server.
+- Editor **CodeMirror 6** (highlight Python, line numbers, bracket matching, tema
+  gelap), console stdout/stderr, dan **input interaktif**:
+  - saat kode memanggil `input()`, muncul **modal** berisi prompt program;
+  - jawaban dikirim, lalu program dijalankan ulang dengan jawaban terkumpul
+    sampai tidak ada `input()` lagi (probe + rerun di worker);
+  - prompt dan jawaban **tidak ditulis ke console**; console hanya menampilkan
+    output yang dicetak kode program;
+  - output hanya diambil dari percobaan final; maksimal 50 input per run;
+  - timer 5 detik dijeda selama modal terbuka; jawaban kosong diperbolehkan.
+- **Run** (Ctrl/Cmd+Enter) dan **Stop**; timeout 5 detik → worker dihentikan,
+  status `timeout`, Pyodide dimuat ulang otomatis.
+- Setiap Run disimpan ke tabel **`lab_runs`** (migration `0011_easy_killer_shrike.sql`,
+  additive):
+  - kolom `user_id`, `code`, `stdin`, `stdout`, `stderr`, `status`
+    (`success`/`error`/`timeout`/`stopped`), `duration_ms`, `created_at`;
+  - maksimal **50 run per siswa** (run lama dipangkas);
+  - output dibatasi 20 KB, kode 50 KB, stdin 10 KB di Server Action.
+- Halaman menampilkan **20 riwayat terakhir**; klik riwayat memuat kode + output
+  (jawaban input tersimpan di kolom `stdin` sebagai catatan); saat di-Run lagi,
+  input **ditanyakan ulang dari awal**. Setiap item bisa dihapus dengan konfirmasi.
+- Draft kode editor disimpan di `localStorage` agar tidak hilang saat refresh.
+- File utama: `src/app/(dashboard)/siswa/lab/page.tsx`,
+  `src/components/lab/*` (termasuk `input-prompt-dialog.tsx`),
+  `src/lib/lab/actions.ts`, `src/lib/lab/queries.ts`,
+  `public/lab/pyodide-worker.js`.
+- Catatan operasional: load awal Pyodide ±6–10 MB (di-cache browser, butuh
+  internet). Jika perlu mode offline, aset Pyodide bisa di-self-host di
+  `public/pyodide/`.
+- Status uji (20 November 2026): `print` + `input()` menampilkan modal prompt
+  tanpa menuliskan prompt/jawaban ke console; dua input berurutan muncul
+  bergantian; kode error menyimpan status `error` + traceback; infinite loop
+  berhenti ±5 detik dan tersimpan `timeout`; Stop & Batal saat modal menyimpan
+  `stopped`; riwayat menyimpan jawaban, dan re-run menanyakan input lagi;
+  tampilan desktop & mobile dicek. Data uji dihapus. `tsc --noEmit` dan ESLint
+  bersih.
+
+### Tugas coding (tugas / ulangan / remedial)
+
+- Menu **Tugas** aktif untuk guru & siswa:
+  - guru: `/guru/tugas` (buat & daftar) dan `/guru/tugas/<id>` (pengumpulan + nilai);
+  - siswa: `/siswa/tugas` (daftar) dan `/siswa/tugas/<id>` (kerjakan + riwayat).
+- Migration `0012_workable_ser_duncan.sql` (additive):
+  - `tugas`: judul, deskripsi, jenis (`tugas`/`ulangan`/`remedial`),
+    `target_type`, `kelas_id`, `starter_code`, `expected_output`,
+    `max_score`, `max_attempts`, `due_at`;
+  - `tugas_submissions`: kode, stdin, stdout, stderr, status, attempt, skor,
+    feedback, waktu kumpul/nilai; FK cascade ke tugas dan users.
+- Migration `0013_smart_stark_industries.sql` (additive):
+  - `tugas.target_type` (`semua`/`kelas`/`siswa`) + backfill data lama;
+  - tabel `tugas_targets` untuk siswa tertentu (unik per tugas+user, cascade).
+- Target tugas (eksklusif):
+  - **Semua kelas**, **satu kelas**, atau **beberapa siswa** (tanpa batas
+    jumlah, bisa lintas kelas/siswa tanpa kelas);
+  - query halaman siswa dan Server Action submit sama-sama memeriksa target;
+  - guru dapat melihat daftar target siswa dan jumlahnya di halaman detail.
+- Guru membuat tugas dengan kode awal + **output yang diharapkan**:
+  - auto-grade membandingkan stdout dengan expected output setelah normalisasi
+    (CRLF, spasi akhir baris, trim);
+  - expected output kosong = nilai manual;
+  - guru dapat menimpa skor + memberi feedback dari halaman detail.
+- Siswa mengerjakan di editor yang sama dengan Lab (Pyodide + input modal):
+  - tombol **Kumpulkan** hanya aktif setelah Run terakhir berhasil dan kode
+    tidak berubah;
+  - batas waktu & jumlah percobaan dicek di client dan Server Action;
+  - nilai otomatis langsung tampil (atau “menunggu penilaian”);
+  - riwayat percobaan menampilkan kode, output, nilai, dan feedback.
+- Catatan: **remedial saat ini berlaku per kelas** (belum per siswa); belum ada
+  timer ulangan; output dieksekusi di browser sehingga guru tetap perlu meninjau
+  kode untuk ulangan yang ketat.
+- Status uji (21 November 2026): guru membuat tugas output `Halo, dunia!`; siswa
+  menulis `print("Halo, dunia!")`, Run, Kumpulkan → auto-grade **100/100** dan
+  submission tersimpan; guru mengubah nilai menjadi **90** + feedback dan
+  tersimpan; daftar tugas, detail, riwayat, dan form penilaian tampil benar.
+  Target diuji: tugas remedial untuk **Siswa Demo** hanya terlihat olehnya,
+  tugas kelas **9A** hanya terlihat oleh siswa 9A, dan siswa di luar target
+  mendapat halaman 404. Data uji dihapus. `tsc --noEmit`, ESLint, dan
+  `npm run build` bersih.
+
 ### Deploy produksi (19 November 2026)
 
 - Deploy ke cPanel **berhasil**; fitur profil, log login, dan lacak lokasi berjalan normal.
@@ -536,10 +627,11 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
 
 ## Yang belum dikerjakan
 
-1. **Data dashboard siswa masih kosong** — shell dan kartu `/siswa` sudah ada, tetapi materi,
-   tugas, jadwal, progress, dan pengumuman belum diisi (masih empty state). Dashboard guru
-   sudah punya CRUD materi dan manajemen kelas; pengelolaan tugas dan nilai belum dibuat.
-   Anggota siswa per kelas serta relasi materi → kelas juga belum ada.
+1. **Data dashboard siswa masih kosong** — shell dan kartu `/siswa` sudah ada, tetapi
+   materi, jadwal, progress, dan pengumuman belum diisi (masih empty state). Menu
+   **Tugas** sudah berisi tugas coding (dengan target kelas/siswa), tetapi belum ada
+   rekap **Nilai** per siswa/kelas atau timer ulangan. Anggota siswa per kelas
+   serta relasi materi → kelas juga belum ada.
 2. **Belum ada registrasi mandiri** — akun siswa dibuat guru lewat `/guru/siswa`
    (satu per satu atau import CSV). Sesuai keputusan pemilik, hanya ada **satu akun guru**
    yang dibuat lewat `npm run db:seed`; belum ada UI untuk menambah akun guru lain.

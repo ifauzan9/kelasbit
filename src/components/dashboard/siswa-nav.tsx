@@ -21,8 +21,8 @@ const navItems: {
 }[] = [
   { label: "Dashboard", icon: Home, href: "/siswa" },
   { label: "Materi", icon: BookOpen, href: "/siswa#materi" },
-  { label: "Tugas", icon: ClipboardList },
-  { label: "Lab Coding", icon: CodeXml },
+  { label: "Tugas", icon: ClipboardList, href: "/siswa/tugas" },
+  { label: "Lab Coding", icon: CodeXml, href: "/siswa/lab" },
   { label: "Nilai", icon: BarChart },
   { label: "Profil", icon: UserRound, href: "/siswa/profil" },
 ];

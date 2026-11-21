@@ -403,3 +403,37 @@ export function EyeOff(props: IconProps) {
     </svg>
   );
 }
+
+export function Terminal(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <polyline points="4 17 10 11 4 5" />
+      <line x1="12" x2="20" y1="19" y2="19" />
+    </svg>
+  );
+}
+
+export function Play(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <polygon points="6 3 20 12 6 21 6 3" />
+    </svg>
+  );
+}
+
+export function Square(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <rect width="14" height="14" x="5" y="5" rx="2" />
+    </svg>
+  );
+}
+
+export function RotateCcw(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+    </svg>
+  );
+}

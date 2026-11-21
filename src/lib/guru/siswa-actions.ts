@@ -334,6 +334,10 @@ export async function resetSiswaPassword(
   const id = parseId(formData.get("id"));
   if (!id) return { error: "Siswa tidak valid." };
 
+  if (formData.get("confirm") !== "yes") {
+    return { error: "Konfirmasi reset password diperlukan." };
+  }
+
   const target = await findSiswa(id);
   if (!target || !target.username) {
     return { error: "Siswa tidak ditemukan." };

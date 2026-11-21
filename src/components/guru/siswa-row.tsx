@@ -73,6 +73,7 @@ export function SiswaRow({
   kelasOptions: KelasOption[];
 }) {
   const [editing, setEditing] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const [state, formAction, pending] = useActionState(updateSiswa, initialSiswaState);
   const [resetState, resetAction, resetPending] = useActionState(
     resetSiswaPassword,
@@ -96,6 +97,12 @@ export function SiswaRow({
 
     setEditing(false);
   }, [state.stamp, state.success]);
+
+  useEffect(() => {
+    if (!resetState.credential) return;
+
+    setConfirmReset(false);
+  }, [resetState.stamp, resetState.credential]);
 
   if (editing) {
     return (
@@ -276,20 +283,19 @@ export function SiswaRow({
                 <span className="hidden sm:inline">Edit</span>
               </button>
 
-              <form action={resetAction}>
-                <input type="hidden" name="id" value={siswa.id} />
-                <button
-                  type="submit"
-                  disabled={resetPending}
-                  title="Reset password"
-                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-bold text-amber-600 transition-colors hover:bg-amber-50 disabled:opacity-60"
-                >
-                  <KeyRound className="h-4 w-4" />
-                  <span className="hidden sm:inline">
-                    {resetPending ? "…" : "Reset"}
-                  </span>
-                </button>
-              </form>
+              <button
+                type="button"
+                onClick={() => setConfirmReset(true)}
+                disabled={resetPending}
+                aria-label={`Reset password ${siswa.name}`}
+                title="Reset password"
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-bold text-amber-600 transition-colors hover:bg-amber-50 disabled:opacity-60"
+              >
+                <KeyRound className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  {resetPending ? "…" : "Reset"}
+                </span>
+              </button>
 
               <form action={deleteAction}>
                 <input type="hidden" name="id" value={siswa.id} />
@@ -300,6 +306,50 @@ export function SiswaRow({
               </form>
             </div>
           </div>
+
+          {confirmReset ? (
+            <div
+              role="alertdialog"
+              aria-labelledby={`reset-confirm-title-${siswa.id}`}
+              aria-describedby={`reset-confirm-desc-${siswa.id}`}
+              className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3"
+            >
+              <p
+                id={`reset-confirm-title-${siswa.id}`}
+                className="text-xs font-extrabold text-amber-800"
+              >
+                Reset password untuk &ldquo;{siswa.name}&rdquo;?
+              </p>
+              <p
+                id={`reset-confirm-desc-${siswa.id}`}
+                className="mt-1 text-[11px] leading-relaxed text-amber-700/80"
+              >
+                Password lama langsung tidak berlaku dan semua sesi login
+                siswa ini dikeluarkan. Pastikan Anda memilih siswa yang benar.
+              </p>
+              <form action={resetAction} className="mt-3 flex flex-wrap gap-2">
+                <input type="hidden" name="id" value={siswa.id} />
+                <input type="hidden" name="confirm" value="yes" />
+                <button
+                  type="submit"
+                  disabled={resetPending}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-2 text-[11px] font-bold text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  {resetPending ? "Mereset…" : "Ya, reset password"}
+                </button>
+                <button
+                  type="button"
+                  autoFocus
+                  onClick={() => setConfirmReset(false)}
+                  disabled={resetPending}
+                  className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-[11px] font-bold text-amber-800 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Batal
+                </button>
+              </form>
+            </div>
+          ) : null}
 
           {resetState.error ? (
             <p role="alert" className="mt-2 text-xs font-medium text-rose-600">

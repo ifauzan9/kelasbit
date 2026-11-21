@@ -25,7 +25,7 @@ const navItems: {
   { label: "Dashboard", icon: Home, href: "/guru" },
   { label: "Kelas", icon: GraduationCap, href: "/guru/kelas" },
   { label: "Materi", icon: BookOpen, href: "/guru#materi" },
-  { label: "Tugas", icon: ClipboardList },
+  { label: "Tugas", icon: ClipboardList, href: "/guru/tugas" },
   { label: "Siswa", icon: Users, href: "/guru/siswa" },
   { label: "Log Login", icon: History, href: "/guru/log-login" },
   { label: "Nilai", icon: BarChart },
@@ -125,8 +125,10 @@ export function GuruSectionLabel() {
 
   const label = pathname.startsWith("/guru/kelas")
     ? "Kelas"
-    : pathname.startsWith("/guru/siswa")
-      ? "Siswa"
+    : pathname.startsWith("/guru/tugas")
+      ? "Tugas"
+      : pathname.startsWith("/guru/siswa")
+        ? "Siswa"
       : pathname.startsWith("/guru/log-login")
         ? "Log Login"
         : pathname.startsWith("/guru/pengaturan")

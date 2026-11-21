@@ -151,6 +151,111 @@ export const materi = pgTable("materi", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Riwayat eksekusi Lab Coding Python. Satu baris per tombol Run.
+ * Output dibatasi di Server Action supaya database tidak membengkak.
+ */
+export const labRuns = pgTable(
+  "lab_runs",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    stdin: text("stdin").notNull().default(""),
+    stdout: text("stdout").notNull().default(""),
+    stderr: text("stderr").notNull().default(""),
+    status: varchar("status", { length: 20 }).notNull().default("success"),
+    durationMs: integer("duration_ms"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("lab_runs_user_created_idx").on(table.userId, table.createdAt),
+  ],
+);
+
+/** Tugas/ulangan/remedial, termasuk tugas coding. */
+export const tugas = pgTable(
+  "tugas",
+  {
+    id: serial("id").primaryKey(),
+    title: varchar("title", { length: 160 }).notNull(),
+    description: text("description").notNull().default(""),
+    /** tugas | ulangan | remedial */
+    jenis: varchar("jenis", { length: 20 }).notNull().default("tugas"),
+    /** semua | kelas | siswa */
+    targetType: varchar("target_type", { length: 20 })
+      .notNull()
+      .default("semua"),
+    /** null = berlaku untuk semua kelas / siswa tertentu. */
+    kelasId: integer("kelas_id").references(() => kelas.id, {
+      onDelete: "set null",
+    }),
+    starterCode: text("starter_code").notNull().default(""),
+    /** Output yang diharapkan untuk auto-grade; kosong = nilai manual. */
+    expectedOutput: text("expected_output").notNull().default(""),
+    maxScore: integer("max_score").notNull().default(100),
+    maxAttempts: integer("max_attempts").notNull().default(3),
+    dueAt: timestamp("due_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("tugas_kelas_idx").on(table.kelasId),
+    index("tugas_created_idx").on(table.createdAt),
+  ],
+);
+
+/** Satu baris per siswa yang ditargetkan (target_type = siswa). */
+export const tugasTargets = pgTable(
+  "tugas_targets",
+  {
+    id: serial("id").primaryKey(),
+    tugasId: integer("tugas_id")
+      .notNull()
+      .references(() => tugas.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    uniqueIndex("tugas_targets_tugas_user_idx").on(table.tugasId, table.userId),
+    index("tugas_targets_user_idx").on(table.userId),
+  ],
+);
+
+/** Satu baris per percobaan pengumpulan tugas coding. */
+export const tugasSubmissions = pgTable(
+  "tugas_submissions",
+  {
+    id: serial("id").primaryKey(),
+    tugasId: integer("tugas_id")
+      .notNull()
+      .references(() => tugas.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    attemptNo: integer("attempt_no").notNull().default(1),
+    code: text("code").notNull(),
+    stdin: text("stdin").notNull().default(""),
+    stdout: text("stdout").notNull().default(""),
+    stderr: text("stderr").notNull().default(""),
+    status: varchar("status", { length: 20 }).notNull().default("success"),
+    /** null = belum dinilai (mis. expected output kosong). */
+    score: integer("score"),
+    feedback: text("feedback"),
+    submittedAt: timestamp("submitted_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    gradedAt: timestamp("graded_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("tugas_submissions_tugas_idx").on(table.tugasId, table.userId),
+    index("tugas_submissions_user_idx").on(table.userId),
+  ],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
@@ -158,6 +263,13 @@ export type Materi = typeof materi.$inferSelect;
 export type NewMateri = typeof materi.$inferInsert;
 export type Kelas = typeof kelas.$inferSelect;
 export type NewKelas = typeof kelas.$inferInsert;
+export type LabRunStatus = "success" | "error" | "timeout" | "stopped";
+export type LabRun = typeof labRuns.$inferSelect;
+export type Tugas = typeof tugas.$inferSelect;
+export type TugasSubmission = typeof tugasSubmissions.$inferSelect;
+export type TugasJenis = "tugas" | "ulangan" | "remedial";
+export type TugasTargetType = "semua" | "kelas" | "siswa";
+export type TugasTarget = typeof tugasTargets.$inferSelect;
 export type LoginAttempt = typeof loginAttempts.$inferSelect;
 export type LoginLog = typeof loginLogs.$inferSelect;
 export type NewLoginLog = typeof loginLogs.$inferInsert;
