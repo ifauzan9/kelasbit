@@ -236,10 +236,12 @@ export default async function GuruTugasDetailPage({
       {roster ? (
         <div className="mt-6">
           <TugasRosterTable
+            tugasId={tugas.id}
             roster={roster}
             submissions={submissions}
             maxScore={tugas.maxScore}
             expectedOutput={tugas.expectedOutput}
+            requireGps={tugas.requireGps}
           />
         </div>
       ) : null}

@@ -1,11 +1,13 @@
 "use server";
 
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, lte } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
 import { requireUser } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import {
   kelas,
   tugas,
+  tugasGpsPasses,
   tugasLocations,
   tugasSubmissions,
   tugasTargets,
@@ -28,6 +30,17 @@ import { parseJakartaDateTime } from "@/lib/settings/maintenance";
 const MAX_CODE = 50_000;
 const MAX_OUTPUT = 20_000;
 const GPS_VALIDITY_MS = 60 * 60 * 1000;
+const GPS_MAX_ACCURACY_METERS = 500;
+const GPS_PASS_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function generateGpsPassCode(length = 8): string {
+  const bytes = randomBytes(length);
+  let result = "";
+  for (let index = 0; index < length; index += 1) {
+    result += GPS_PASS_ALPHABET[bytes[index] % GPS_PASS_ALPHABET.length];
+  }
+  return result;
+}
 const JENIS: TugasJenis[] = ["tugas", "ulangan", "remedial"];
 const TARGET_TYPES: TugasTargetType[] = ["semua", "kelas", "siswa"];
 const STATUSES: LabRunStatus[] = ["success", "error", "timeout", "stopped"];
@@ -397,6 +410,7 @@ export async function submitTugas(
           eq(tugasLocations.tugasId, assignment.id),
           eq(tugasLocations.userId, user.id),
           eq(tugasLocations.status, "tersedia"),
+          lte(tugasLocations.accuracy, GPS_MAX_ACCURACY_METERS),
           gte(
             tugasLocations.capturedAt,
             new Date(Date.now() - GPS_VALIDITY_MS),
@@ -406,11 +420,28 @@ export async function submitTugas(
       .orderBy(desc(tugasLocations.capturedAt))
       .limit(1);
 
+    let hasPass = false;
     if (!location) {
+      const [pass] = await getDb()
+        .select({ id: tugasGpsPasses.id })
+        .from(tugasGpsPasses)
+        .where(
+          and(
+            eq(tugasGpsPasses.tugasId, assignment.id),
+            eq(tugasGpsPasses.userId, user.id),
+            eq(tugasGpsPasses.active, true),
+            isNotNull(tugasGpsPasses.usedAt),
+          ),
+        )
+        .limit(1);
+      hasPass = Boolean(pass);
+    }
+
+    if (!location && !hasPass) {
       return {
         ok: false,
         error:
-          "Lokasi GPS tidak valid. Aktifkan GPS lagi sebelum mengumpulkan tugas.",
+          "Lokasi GPS tidak valid. Aktifkan GPS presisi atau gunakan kode pass dari guru.",
       };
     }
   }
@@ -727,6 +758,15 @@ export async function resetTugasSubmission(input: {
         ),
       );
 
+    await getDb()
+      .delete(tugasGpsPasses)
+      .where(
+        and(
+          eq(tugasGpsPasses.tugasId, input.tugasId),
+          eq(tugasGpsPasses.userId, input.userId),
+        ),
+      );
+
     return { ok: true, deleted: deleted.length };
   } catch (error) {
     console.error("tugas: gagal mereset pekerjaan siswa", error);
@@ -842,5 +882,113 @@ export async function setTugasRequireGps(input: {
   } catch (error) {
     console.error("tugas: gagal mengubah kewajiban GPS", error);
     return { ok: false, error: "Gagal menyimpan pengaturan. Coba lagi." };
+  }
+}
+
+export type TugasGpsPassResult = {
+  ok: boolean;
+  error?: string;
+  pass?: {
+    id: number;
+    code: string;
+    active: boolean;
+    usedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+};
+
+/** Buat kode pass GPS baru untuk satu siswa; kode lama dinonaktifkan. */
+export async function createTugasGpsPass(input: {
+  tugasId: number;
+  userId: number;
+}): Promise<TugasGpsPassResult> {
+  await requireUser("guru");
+
+  if (
+    !Number.isInteger(input.tugasId) ||
+    input.tugasId <= 0 ||
+    !Number.isInteger(input.userId) ||
+    input.userId <= 0
+  ) {
+    return { ok: false, error: "Data kode pass tidak valid." };
+  }
+
+  const [student] = await getDb()
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.id, input.userId), eq(users.role, "siswa")))
+    .limit(1);
+
+  if (!student) return { ok: false, error: "Siswa tidak ditemukan." };
+
+  try {
+    await getDb()
+      .update(tugasGpsPasses)
+      .set({ active: false, updatedAt: new Date() })
+      .where(
+        and(
+          eq(tugasGpsPasses.tugasId, input.tugasId),
+          eq(tugasGpsPasses.userId, input.userId),
+        ),
+      );
+
+    const [created] = await getDb()
+      .insert(tugasGpsPasses)
+      .values({
+        tugasId: input.tugasId,
+        userId: input.userId,
+        code: generateGpsPassCode(),
+        active: true,
+      })
+      .returning();
+
+    return {
+      ok: true,
+      pass: {
+        id: created.id,
+        code: created.code,
+        active: created.active,
+        usedAt: created.usedAt ? created.usedAt.toISOString() : null,
+        createdAt: created.createdAt.toISOString(),
+        updatedAt: created.updatedAt.toISOString(),
+      },
+    };
+  } catch (error) {
+    console.error("tugas: gagal membuat kode pass GPS", error);
+    return { ok: false, error: "Gagal membuat kode pass. Coba lagi." };
+  }
+}
+
+export type TugasGpsPassToggleResult = {
+  ok: boolean;
+  error?: string;
+};
+
+export async function setTugasGpsPassActive(input: {
+  passId: number;
+  active: boolean;
+}): Promise<TugasGpsPassToggleResult> {
+  await requireUser("guru");
+
+  if (!Number.isInteger(input.passId) || input.passId <= 0) {
+    return { ok: false, error: "Kode pass tidak valid." };
+  }
+
+  try {
+    const updated = await getDb()
+      .update(tugasGpsPasses)
+      .set({ active: input.active === true, updatedAt: new Date() })
+      .where(eq(tugasGpsPasses.id, input.passId))
+      .returning({ id: tugasGpsPasses.id });
+
+    if (updated.length === 0) {
+      return { ok: false, error: "Kode pass tidak ditemukan." };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error("tugas: gagal mengubah status kode pass", error);
+    return { ok: false, error: "Gagal menyimpan status kode pass." };
   }
 }

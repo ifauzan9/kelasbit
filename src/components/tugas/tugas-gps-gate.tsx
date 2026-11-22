@@ -4,8 +4,25 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, MapPin, ShieldCheck } from "@/components/icons";
 import type { LoginLocationStatus } from "@/lib/auth/geolocation";
+import {
+  formatAccuracyMeters,
+  GPS_MAX_ACCURACY_METERS,
+  GPS_PRECISION_LABEL,
+  GPS_SAMPLE_COUNT,
+  gpsPrecisionTier,
+} from "@/lib/tugas/location";
 
 type Phase = "idle" | "locating" | "saving" | "error";
+
+function getPosition(): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      timeout: 10_000,
+      maximumAge: 0,
+    });
+  });
+}
 
 export function TugasGpsGate({
   tugasId,
@@ -17,6 +34,9 @@ export function TugasGpsGate({
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [codeMessage, setCodeMessage] = useState<string | null>(null);
 
   async function saveLocation(location: {
     status: LoginLocationStatus;
@@ -36,7 +56,7 @@ export function TugasGpsGate({
     }
   }
 
-  function requestGps() {
+  async function requestGps() {
     if (!window.isSecureContext) {
       setPhase("error");
       setMessage(
@@ -60,54 +80,128 @@ export function TugasGpsGate({
     }
 
     setPhase("locating");
-    setMessage("Meminta izin dan membaca lokasi…");
+    setMessage("Meminta izin dan mengambil sampel lokasi…");
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        setPhase("saving");
-        setMessage("Lokasi ditemukan. Membuka tugas…");
+    const samples: GeolocationPosition[] = [];
+    let lastError: GeolocationPositionError | null = null;
 
-        const saved = await saveLocation({
-          status: "tersedia",
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-        });
+    for (let index = 0; index < GPS_SAMPLE_COUNT; index += 1) {
+      try {
+        const position = await getPosition();
+        samples.push(position);
 
-        if (!saved) {
-          setPhase("error");
-          setMessage("Gagal menyimpan lokasi. Coba lagi.");
-          return;
+        if (position.coords.accuracy <= 50) break;
+
+        if (index < GPS_SAMPLE_COUNT - 1) {
+          setMessage(
+            `Sampel ${index + 1}/${GPS_SAMPLE_COUNT} selesai. Mengambil sampel berikutnya…`,
+          );
         }
+      } catch (error) {
+        lastError = error as GeolocationPositionError;
 
-        router.refresh();
-      },
-      (error) => {
-        const status: LoginLocationStatus =
-          error.code === error.PERMISSION_DENIED
-            ? "ditolak"
-            : error.code === error.TIMEOUT
-              ? "timeout"
-              : "error";
+        if (lastError.code === lastError.PERMISSION_DENIED) break;
+      }
+    }
 
-        const text =
-          status === "ditolak"
-            ? "Izin lokasi ditolak. Aktifkan izin lokasi di browser, lalu coba lagi."
-            : status === "timeout"
-              ? "Waktu pengambilan lokasi habis. Coba lagi di tempat yang sinyalnya lebih baik."
-              : "Lokasi tidak tersedia. Pastikan GPS aktif dan coba lagi.";
+    if (samples.length === 0) {
+      const status: LoginLocationStatus =
+        lastError?.code === lastError?.PERMISSION_DENIED
+          ? "ditolak"
+          : lastError?.code === lastError?.TIMEOUT
+            ? "timeout"
+            : "error";
 
-        setPhase("error");
-        setMessage(text);
-        void saveLocation({
-          status,
-          latitude: null,
-          longitude: null,
-          accuracy: null,
-        });
-      },
-      { enableHighAccuracy: true, timeout: 20_000, maximumAge: 0 },
+      setPhase("error");
+      setMessage(
+        status === "ditolak"
+          ? "Izin lokasi ditolak. Aktifkan izin lokasi dan pilih Presisi, lalu coba lagi."
+          : status === "timeout"
+            ? "Waktu pengambilan lokasi habis. Coba lagi di tempat yang sinyalnya lebih baik."
+            : "Lokasi tidak tersedia. Pastikan GPS aktif dan coba lagi.",
+      );
+      void saveLocation({
+        status,
+        latitude: null,
+        longitude: null,
+        accuracy: null,
+      });
+      return;
+    }
+
+    const best = samples.reduce((current, sample) =>
+      sample.coords.accuracy < current.coords.accuracy ? sample : current,
     );
+    const accuracy = best.coords.accuracy;
+    const tier = gpsPrecisionTier(accuracy);
+    const tierLabel = tier ? GPS_PRECISION_LABEL[tier] : null;
+    const accuracyLabel = formatAccuracyMeters(accuracy) ?? "tidak diketahui";
+
+    setPhase("saving");
+    setMessage(`Akurasi terbaik ${accuracyLabel}. Menyimpan lokasi…`);
+
+    if (accuracy > GPS_MAX_ACCURACY_METERS) {
+      await saveLocation({
+        status: "tersedia",
+        latitude: best.coords.latitude,
+        longitude: best.coords.longitude,
+        accuracy,
+      });
+      setPhase("error");
+      setMessage(
+        `Lokasi di luar batas (${accuracyLabel}). Aktifkan GPS presisi/Precise Location, lalu coba lagi.`,
+      );
+      return;
+    }
+
+    const saved = await saveLocation({
+      status: "tersedia",
+      latitude: best.coords.latitude,
+      longitude: best.coords.longitude,
+      accuracy,
+    });
+
+    if (!saved) {
+      setPhase("error");
+      setMessage("Gagal menyimpan lokasi. Coba lagi.");
+      return;
+    }
+
+    setPhase("saving");
+    setMessage(
+      `Lokasi tersimpan (${accuracyLabel}${tierLabel ? ` · ${tierLabel}` : ""}). Membuka tugas…`,
+    );
+    router.refresh();
+  }
+
+  async function usePass() {
+    const normalized = code.trim().toUpperCase();
+    if (!normalized || codeBusy) return;
+
+    setCodeBusy(true);
+    setCodeMessage(null);
+
+    try {
+      const response = await fetch(`/api/tugas/${tugasId}/gps-pass`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: normalized }),
+      });
+
+      if (!response.ok) {
+        setCodeMessage(
+          "Kode pass tidak valid, sudah dinonaktifkan, atau bukan untuk tugas ini.",
+        );
+        return;
+      }
+
+      setCodeMessage("Kode diterima. Membuka tugas…");
+      router.refresh();
+    } catch {
+      setCodeMessage("Gagal memeriksa kode. Coba lagi.");
+    } finally {
+      setCodeBusy(false);
+    }
   }
 
   const busy = phase === "locating" || phase === "saving";
@@ -132,16 +226,18 @@ export function TugasGpsGate({
 
       <div className="space-y-4 p-5">
         <p className="text-sm leading-relaxed text-slate-600">
-          Tugas ini mewajibkan lokasi GPS. Setelah diizinkan, halaman tugas
-          akan terbuka. Lokasi berlaku selama <strong>1 jam</strong> dan
-          disimpan sebagai riwayat untuk guru.
+          Tugas ini mewajibkan lokasi GPS dengan akurasi maksimal{" "}
+          <strong>{GPS_MAX_ACCURACY_METERS} meter</strong>. Sistem mengambil
+          hingga {GPS_SAMPLE_COUNT} sampel dan memakai akurasi terbaik. Lokasi
+          berlaku selama <strong>1 jam</strong>.
         </p>
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 text-[11px] leading-relaxed text-slate-500">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-3.5 py-3 text-[11px] leading-relaxed text-emerald-800">
           <p className="flex items-start gap-2">
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-            Lokasi hanya diminta untuk tugas ini. Jika izin ditolak, tugas
-            tidak bisa dikerjakan sampai izin lokasi diaktifkan.
+            Jika browser menampilkan pilihan <strong>Perkiraan/Presisi</strong>,
+            pilih <strong>Presisi (Precise Location)</strong>. Jika akurasi
+            masih di luar batas, minta kode pass dari guru.
           </p>
         </div>
 
@@ -169,13 +265,56 @@ export function TugasGpsGate({
         >
           <MapPin className="h-4 w-4" />
           {phase === "locating"
-            ? "Membaca lokasi…"
+            ? "Mengambil sampel lokasi…"
             : phase === "saving"
               ? "Menyimpan lokasi…"
               : phase === "error"
                 ? "Coba Aktifkan GPS Lagi"
                 : "Aktifkan GPS"}
         </button>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
+          <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
+            Punya kode pass dari guru?
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+            Gunakan kode ini jika GPS perangkat tetap tidak presisi. Kode hanya
+            berlaku untuk tugas dan siswa ini.
+          </p>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+            <input
+              value={code}
+              onChange={(event) =>
+                setCode(
+                  event.target.value
+                    .toUpperCase()
+                    .replace(/[^A-Z0-9]/g, "")
+                    .slice(0, 12),
+                )
+              }
+              placeholder="Contoh: AB12CD34"
+              spellCheck={false}
+              autoComplete="off"
+              className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 font-mono text-sm font-bold tracking-widest text-slate-800 outline-none transition placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+            />
+            <button
+              type="button"
+              onClick={usePass}
+              disabled={codeBusy || code.trim().length < 6}
+              className="inline-flex h-10 items-center justify-center rounded-lg bg-slate-900 px-4 text-xs font-bold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {codeBusy ? "Memeriksa…" : "Gunakan kode"}
+            </button>
+          </div>
+          {codeMessage ? (
+            <p
+              role="status"
+              className="mt-2 text-[11px] font-semibold text-rose-600"
+            >
+              {codeMessage}
+            </p>
+          ) : null}
+        </div>
       </div>
     </section>
   );

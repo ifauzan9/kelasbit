@@ -664,11 +664,24 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
     - switch **GPS wajib** di detail tugas guru;
     - siswa harus mengaktifkan GPS sebelum halaman tugas terbuka;
     - lokasi valid **1 jam**; gate muncul lagi jika sudah kedaluwarsa;
-    - server menolak submit tanpa lokasi `tersedia` dalam 1 jam;
+    - server menolak submit tanpa lokasi presisi dalam 1 jam;
     - setiap pencatatan masuk ke tabel `tugas_locations`;
+    - ambil hingga **3 sampel** dan pakai akurasi terbaik;
+    - tingkat akurasi: **Sangat presisi ≤50 m**, **Presisi 51–200 m**,
+      **Cukup presisi 201–350 m**, **Kurang presisi 351–500 m**, dan
+      **Di luar batas >500 m** (ditolak);
     - guru melihat lokasi terakhir di roster/modal tugas dan riwayat lengkap
       di halaman detail siswa `/guru/siswa/<id>`;
     - reset pekerjaan menghapus riwayat lokasi siswa untuk tugas tersebut.
+  - **Kode pass GPS** (migration additif
+    `0019_careless_silk_fever.sql`):
+    - guru membuat kode per siswa + tugas dari modal detail siswa;
+    - kode **8 karakter**, terikat ke siswa/tugas, dan bisa dipakai berulang;
+    - kode tetap aktif sampai guru menekan **Nonaktifkan**;
+    - siswa memasukkan kode di gate GPS untuk membuka tugas tanpa GPS presisi;
+    - membuat kode baru otomatis menonaktifkan kode lama;
+    - guru melihat status aktif/nonaktif, waktu pemakaian, dan status bypass;
+    - reset pekerjaan menghapus kode pass siswa pada tugas tersebut.
 - Panel **Perbedaan output** di detail guru membandingkan output siswa dengan
   target per baris:
   - menandai baris berbeda/hilang/tambahan;
@@ -768,6 +781,16 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   menampilkan riwayat `tersedia` + `ditolak`. Switch GPS dimatikan → gate
   hilang; dinyalakan lagi dan lokasi dibuat >1 jam → gate muncul kembali.
   Data uji dan riwayat lokasi dihapus.
+- Status uji akurasi + kode pass GPS (22 November 2026):
+  - lokasi akurasi **550 m** disimpan tetapi gate tetap terkunci dan muncul
+    pesan **di luar batas**;
+  - lokasi akurasi **450 m** diterima sebagai **Kurang presisi** dan editor
+    terbuka;
+  - guru membuat kode 8 karakter dari tombol **Kode GPS** pada roster,
+    termasuk untuk siswa yang belum punya submission;
+  - siswa memasukkan kode → halaman tugas terbuka tanpa GPS;
+  - guru menonaktifkan kode → reload siswa menampilkan gate lagi;
+  - data uji, lokasi, dan kode pass dihapus.
 - Status uji export Excel (22 November 2026): route guru menghasilkan
   `progres-tugas-<id>.xlsx` (200) dengan sheet `Progres Tugas`, ringkasan
   target/KKM, serta baris lulus, belum lulus, dan belum mengerjakan; tanpa

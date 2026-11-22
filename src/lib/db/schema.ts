@@ -278,6 +278,33 @@ export const tugasLocations = pgTable(
   ],
 );
 
+/** Kode pass manual guru untuk kasus GPS siswa tidak akurat. */
+export const tugasGpsPasses = pgTable(
+  "tugas_gps_passes",
+  {
+    id: serial("id").primaryKey(),
+    tugasId: integer("tugas_id")
+      .notNull()
+      .references(() => tugas.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    code: varchar("code", { length: 12 }).notNull(),
+    active: boolean("active").notNull().default(true),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("tugas_gps_passes_tugas_user_idx").on(table.tugasId, table.userId),
+    index("tugas_gps_passes_code_idx").on(table.code),
+  ],
+);
+
 /** Satu baris per percobaan pengumpulan tugas coding. */
 export const tugasSubmissions = pgTable(  "tugas_submissions",
   {

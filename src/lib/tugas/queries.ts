@@ -1,9 +1,10 @@
-import { and, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import {
   kelas,
   tugas,
+  tugasGpsPasses,
   tugasLocations,
   tugasSubmissions,
   tugasTargets,
@@ -13,6 +14,7 @@ import {
   type TugasTargetType,
 } from "@/lib/db/schema";
 import type {
+  TugasGpsPassView,
   TugasLocationView,
   TugasRoster,
   TugasRosterRow,
@@ -243,10 +245,61 @@ export async function getLatestAvailableTugasLocation(
   return row ? toLocationView(row) : null;
 }
 
+function toGpsPassView(
+  row: typeof tugasGpsPasses.$inferSelect,
+): TugasGpsPassView {
+  return {
+    id: row.id,
+    tugasId: row.tugasId,
+    userId: row.userId,
+    code: row.code,
+    active: row.active,
+    usedAt: row.usedAt ? row.usedAt.toISOString() : null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export async function hasActiveGpsBypass(
+  tugasId: number,
+  userId: number,
+): Promise<boolean> {
+  const [row] = await getDb()
+    .select({ id: tugasGpsPasses.id })
+    .from(tugasGpsPasses)
+    .where(
+      and(
+        eq(tugasGpsPasses.tugasId, tugasId),
+        eq(tugasGpsPasses.userId, userId),
+        eq(tugasGpsPasses.active, true),
+        isNotNull(tugasGpsPasses.usedAt),
+      ),
+    )
+    .limit(1);
+
+  return Boolean(row);
+}
+
+async function latestGpsPassesForTugas(
+  tugasId: number,
+): Promise<Map<number, TugasGpsPassView>> {
+  const rows = await getDb()
+    .select()
+    .from(tugasGpsPasses)
+    .where(eq(tugasGpsPasses.tugasId, tugasId))
+    .orderBy(desc(tugasGpsPasses.createdAt), desc(tugasGpsPasses.id));
+
+  const byUser = new Map<number, TugasGpsPassView>();
+  for (const row of rows) {
+    if (byUser.has(row.userId)) continue;
+    byUser.set(row.userId, toGpsPassView(row));
+  }
+  return byUser;
+}
+
 async function latestLocationsForTugas(
   tugasId: number,
-): Promise<Map<number, TugasLocationView>> {
-  const rows = await getDb()
+): Promise<Map<number, TugasLocationView>> {  const rows = await getDb()
     .select({
       location: tugasLocations,
       tugasTitle: tugas.title,
@@ -428,6 +481,7 @@ export async function getTugasRoster(
   }
 
   const latestLocations = await latestLocationsForTugas(tugasId);
+  const latestGpsPasses = await latestGpsPassesForTugas(tugasId);
 
   const rows: TugasRosterRow[] = students.map((student) => {
     const mine = byUser.get(student.id) ?? [];
@@ -470,6 +524,7 @@ export async function getTugasRoster(
         : null,
       status,
       latestLocation: latestLocations.get(student.id) ?? null,
+      gpsPass: latestGpsPasses.get(student.id) ?? null,
     };
   });
 
@@ -586,6 +641,7 @@ export async function getTugasForSiswa(tugasId: number): Promise<{
   tugas: TugasView;
   submissions: TugasSubmissionView[];
   latestLocation: TugasLocationView | null;
+  gpsBypassActive: boolean;
 } | null> {
   const user = await requireUser("siswa");
   const kelasId = await siswaKelasId(user.id);
@@ -635,6 +691,7 @@ export async function getTugasForSiswa(tugasId: number): Promise<{
     .orderBy(desc(tugasSubmissions.submittedAt), desc(tugasSubmissions.id));
 
   const latestLocation = await getLatestTugasLocation(tugasId, user.id);
+  const gpsBypassActive = await hasActiveGpsBypass(tugasId, user.id);
 
   return {
     tugas: toView(row, rows.length, 0),
@@ -642,6 +699,7 @@ export async function getTugasForSiswa(tugasId: number): Promise<{
       toSubmissionView({ ...item, userName: user.name }),
     ),
     latestLocation,
+    gpsBypassActive,
   };
 }
 

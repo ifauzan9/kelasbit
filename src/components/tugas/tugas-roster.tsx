@@ -12,7 +12,14 @@ import {
   X,
 } from "@/components/icons";
 import { SubmissionDetailContent } from "@/components/tugas/submission-detail";
+import { GpsPassControl } from "@/components/tugas/gps-pass-control";
 import { locationMapUrl } from "@/lib/auth/geolocation";
+import {
+  formatAccuracyMeters,
+  GPS_PRECISION_LABEL,
+  gpsPrecisionTier,
+  type GpsPrecisionTier,
+} from "@/lib/tugas/location";
 import { resetTugasSubmission } from "@/lib/tugas/actions";
 import type {
   TugasLocationView,
@@ -56,6 +63,14 @@ const LOCATION_LABEL: Record<string, string> = {
   dimatikan: "Dimatikan",
 };
 
+const PRECISION_CLASS: Record<GpsPrecisionTier, string> = {
+  sangat_presisi: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+  presisi: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+  cukup_presisi: "bg-amber-50 text-amber-700 ring-amber-100",
+  kurang_presisi: "bg-orange-50 text-orange-700 ring-orange-100",
+  di_luar_batas: "bg-rose-50 text-rose-700 ring-rose-100",
+};
+
 function LocationCell({
   location,
 }: {
@@ -70,21 +85,38 @@ function LocationCell({
     location.latitude !== null &&
     location.longitude !== null
   ) {
+    const tier = gpsPrecisionTier(location.accuracy);
+    const accuracy = formatAccuracyMeters(location.accuracy);
+
     return (
-      <a
-        href={locationMapUrl(location.latitude, location.longitude)}
-        target="_blank"
-        rel="noreferrer"
-        title={
-          location.accuracy !== null
-            ? `Akurasi ±${Math.round(location.accuracy)} m`
-            : undefined
-        }
-        className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
-      >
-        <MapPin className="h-3 w-3" />
-        Lihat peta
-      </a>
+      <div className="flex flex-col items-start gap-0.5">
+        {tier ? (
+          <span
+            className={`inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ring-1 ${PRECISION_CLASS[tier]}`}
+          >
+            {GPS_PRECISION_LABEL[tier]}
+          </span>
+        ) : null}
+        <a
+          href={locationMapUrl(location.latitude, location.longitude)}
+          target="_blank"
+          rel="noreferrer"
+          title={
+            location.accuracy !== null
+              ? `Akurasi ${accuracy ?? "tidak diketahui"}`
+              : undefined
+          }
+          className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
+        >
+          <MapPin className="h-3 w-3" />
+          Lihat peta
+        </a>
+        {accuracy ? (
+          <span className="px-1.5 text-[9px] font-medium text-slate-400">
+            {accuracy}
+          </span>
+        ) : null}
+      </div>
     );
   }
 
@@ -114,15 +146,19 @@ function matchesFilter(row: TugasRosterRow, filter: Filter): boolean {
 }
 
 export function TugasRosterTable({
+  tugasId,
   roster,
   submissions,
   maxScore,
   expectedOutput,
+  requireGps,
 }: {
+  tugasId: number;
   roster: TugasRoster;
   submissions: TugasSubmissionView[];
   maxScore: number;
   expectedOutput: string;
+  requireGps: boolean;
 }) {
   const [filter, setFilter] = useState<Filter>("semua");
   const [query, setQuery] = useState("");
@@ -519,6 +555,23 @@ export function TugasRosterTable({
                       </td>
                       <td className="px-2 py-2.5">
                         <LocationCell location={row.latestLocation} />
+                        {row.gpsPass ? (
+                          <span
+                            className={`mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wide ring-1 ${
+                              row.gpsPass.active
+                                ? row.gpsPass.usedAt
+                                  ? "bg-amber-50 text-amber-700 ring-amber-100"
+                                  : "bg-sky-50 text-sky-700 ring-sky-100"
+                                : "bg-slate-100 text-slate-500 ring-slate-200"
+                            }`}
+                          >
+                            {row.gpsPass.active
+                              ? row.gpsPass.usedAt
+                                ? "Bypass dipakai"
+                                : "Kode aktif"
+                              : "Kode nonaktif"}
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-2 py-2.5">
                         <span
@@ -538,21 +591,37 @@ export function TugasRosterTable({
                           : "—"}
                       </td>
                       <td className="px-2 py-2.5 text-right">
-                        {submission ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCompareUserIds(null);
-                              setResetError(null);
-                              setSelectedUserId(submission.userId);
-                            }}
-                            className="rounded-lg px-2 py-1 text-[10px] font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
-                          >
-                            Lihat jawaban
-                          </button>
-                        ) : (
-                          <span className="text-[10px] text-slate-300">—</span>
-                        )}
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                          {submission ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCompareUserIds(null);
+                                setResetError(null);
+                                setSelectedUserId(submission.userId);
+                              }}
+                              className="rounded-lg px-2 py-1 text-[10px] font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
+                            >
+                              Lihat jawaban
+                            </button>
+                          ) : null}
+                          {requireGps ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCompareUserIds(null);
+                                setResetError(null);
+                                setSelectedUserId(row.userId);
+                              }}
+                              className="rounded-lg px-2 py-1 text-[10px] font-bold text-amber-700 transition-colors hover:bg-amber-50"
+                            >
+                              Kode GPS
+                            </button>
+                          ) : null}
+                          {!submission && !requireGps ? (
+                            <span className="text-[10px] text-slate-300">—</span>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -597,7 +666,7 @@ export function TugasRosterTable({
         ) : null}
       </section>
 
-      {selectedSubmission ? (
+      {selectedRow ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5"
           onMouseDown={(event) => {
@@ -623,20 +692,23 @@ export function TugasRosterTable({
                     id="roster-submission-title"
                     className="truncate text-base font-extrabold text-slate-900"
                   >
-                    {selectedSubmission.userName}
+                    {selectedSubmission?.userName ?? selectedRow.name}
                   </h2>
                   <p className="mt-0.5 text-[11px] font-medium text-slate-400">
-                    Percobaan ke-{selectedSubmission.attemptNo} ·{" "}
-                    {dateFormatter.format(
-                      new Date(selectedSubmission.submittedAt),
-                    )}{" "}
-                    WIB
+                    {selectedSubmission
+                      ? `Percobaan ke-${selectedSubmission.attemptNo} · ${dateFormatter.format(
+                          new Date(selectedSubmission.submittedAt),
+                        )} WIB`
+                      : "Belum ada pengumpulan · kode GPS tetap bisa dibuat"}
                   </p>
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold text-slate-700">
-                      Nilai {selectedSubmission.score ?? "—"} / {maxScore}
-                    </span>
-                    {selectedSubmission.passed !== null ? (
+                    {selectedSubmission ? (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold text-slate-700">
+                        Nilai {selectedSubmission.score ?? "—"} / {maxScore}
+                      </span>
+                    ) : null}
+                    {selectedSubmission?.passed !== null &&
+                    selectedSubmission?.passed !== undefined ? (
                       <span
                         className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ring-1 ${
                           selectedSubmission.passed
@@ -647,7 +719,7 @@ export function TugasRosterTable({
                         {selectedSubmission.passed ? "Lulus" : "Belum lulus"}
                       </span>
                     ) : null}
-                    {selectedRow?.latestLocation ? (
+                    {selectedRow.latestLocation ? (
                       <span className="rounded-full bg-sky-50 px-2 py-0.5 ring-1 ring-sky-100">
                         <LocationCell location={selectedRow.latestLocation} />
                       </span>
@@ -657,14 +729,16 @@ export function TugasRosterTable({
               </div>
 
               <div className="flex shrink-0 items-start gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleReset(selectedSubmission)}
-                  disabled={resetting}
-                  className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {resetting ? "Mereset…" : "Reset pekerjaan"}
-                </button>
+                {selectedSubmission ? (
+                  <button
+                    type="button"
+                    onClick={() => handleReset(selectedSubmission)}
+                    disabled={resetting}
+                    className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {resetting ? "Mereset…" : "Reset pekerjaan"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => {
@@ -679,6 +753,14 @@ export function TugasRosterTable({
               </div>
             </header>
 
+            {selectedUserId !== null && selectedRow ? (
+              <GpsPassControl
+                tugasId={tugasId}
+                userId={selectedUserId}
+                initialPass={selectedRow.gpsPass}
+              />
+            ) : null}
+
             {resetError ? (
               <p
                 role="alert"
@@ -689,11 +771,23 @@ export function TugasRosterTable({
             ) : null}
 
             <div className="overflow-y-auto p-4 sm:p-5">
-              <SubmissionDetailContent
-                submission={selectedSubmission}
-                maxScore={maxScore}
-                expectedOutput={expectedOutput}
-              />
+              {selectedSubmission ? (
+                <SubmissionDetailContent
+                  submission={selectedSubmission}
+                  maxScore={maxScore}
+                  expectedOutput={expectedOutput}
+                />
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center">
+                  <Users className="mx-auto h-8 w-8 text-slate-300" />
+                  <p className="mt-2 text-sm font-semibold text-slate-500">
+                    Belum ada jawaban yang dikumpulkan.
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Guru tetap bisa membuat kode pass GPS dari panel di atas.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -15,6 +15,11 @@ import {
   mapUrlFor,
   locationStatusLabel,
 } from "@/lib/guru/login-log-utils";
+import {
+  GPS_PRECISION_LABEL,
+  gpsPrecisionTier,
+  type GpsPrecisionTier,
+} from "@/lib/tugas/location";
 import { listTugasLocationsForUser } from "@/lib/tugas/queries";
 
 export const metadata: Metadata = {
@@ -29,6 +34,14 @@ const LOCATION_STYLE: Record<string, string> = {
   error: "bg-rose-50 text-rose-700 ring-rose-100",
   tidak_dicatat: "bg-slate-100 text-slate-600 ring-slate-200",
   dimatikan: "bg-slate-100 text-slate-600 ring-slate-200",
+};
+
+const PRECISION_STYLE: Record<GpsPrecisionTier, string> = {
+  sangat_presisi: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+  presisi: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+  cukup_presisi: "bg-amber-50 text-amber-700 ring-amber-100",
+  kurang_presisi: "bg-orange-50 text-orange-700 ring-orange-100",
+  di_luar_batas: "bg-rose-50 text-rose-700 ring-rose-100",
 };
 
 export default async function DetailSiswaPage({
@@ -149,6 +162,13 @@ export default async function DetailSiswaPage({
                     location.longitude,
                   );
                   const accuracy = formatAccuracy(location.accuracy);
+                  const tier =
+                    location.status === "tersedia"
+                      ? gpsPrecisionTier(location.accuracy)
+                      : null;
+                  const statusLabel = tier
+                    ? GPS_PRECISION_LABEL[tier]
+                    : locationStatusLabel(location.status);
 
                   return (
                     <tr key={location.id} className="hover:bg-slate-50/70">
@@ -166,12 +186,19 @@ export default async function DetailSiswaPage({
                       <td className="px-2 py-2.5">
                         <span
                           className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ring-1 ${
-                            LOCATION_STYLE[location.status] ??
-                            LOCATION_STYLE.tidak_dicatat
+                            tier
+                              ? PRECISION_STYLE[tier]
+                              : (LOCATION_STYLE[location.status] ??
+                                LOCATION_STYLE.tidak_dicatat)
                           }`}
                         >
-                          {locationStatusLabel(location.status)}
+                          {statusLabel}
                         </span>
+                        {tier === "di_luar_batas" ? (
+                          <span className="mt-1 block text-[9px] font-medium text-rose-600">
+                            Perlu GPS presisi
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-2 py-2.5 text-[10px] font-medium text-slate-500">
                         {accuracy ?? "—"}

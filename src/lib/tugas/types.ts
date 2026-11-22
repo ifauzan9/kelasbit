@@ -70,6 +70,17 @@ export type TugasLocationView = {
   capturedAt: string;
 };
 
+export type TugasGpsPassView = {
+  id: number;
+  tugasId: number;
+  userId: number;
+  code: string;
+  active: boolean;
+  usedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type TugasSiswaView = TugasView & {
   attemptsUsed: number;
   attemptsLeft: number;
@@ -98,6 +109,7 @@ export type TugasRosterRow = {
   lastSubmittedAt: string | null;
   status: TugasRosterStatus;
   latestLocation: TugasLocationView | null;
+  gpsPass: TugasGpsPassView | null;
 };
 
 export type TugasRoster = {

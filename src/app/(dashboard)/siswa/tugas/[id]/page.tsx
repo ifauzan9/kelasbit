@@ -10,6 +10,7 @@ import { TugasRequirements } from "@/components/tugas/tugas-requirements";
 import { TugasGpsGate } from "@/components/tugas/tugas-gps-gate";
 import { TugasWorkspace } from "@/components/tugas/tugas-workspace";
 import { getTugasForSiswa } from "@/lib/tugas/queries";
+import { isGpsAccuracyAccepted, GPS_VALIDITY_MS } from "@/lib/tugas/location";
 import {
   RETRY_COOLDOWN_EVERY,
   RETRY_COOLDOWN_MINUTES,
@@ -63,7 +64,7 @@ export default async function SiswaTugasDetailPage({
   const data = await getTugasForSiswa(id);
   if (!data) notFound();
 
-  const { tugas, submissions, latestLocation } = data;
+  const { tugas, submissions, latestLocation, gpsBypassActive } = data;
   const attemptsLeft = Math.max(0, tugas.maxAttempts - submissions.length);
   const closed =
     tugas.dueAt !== null && new Date(tugas.dueAt).getTime() <= Date.now();
@@ -80,13 +81,18 @@ export default async function SiswaTugasDetailPage({
   const repeat = tugas.repeatUntilPass && tugas.minScore !== null;
   const canWork =
     !closed && passed !== true && (repeat || attemptsLeft > 0);
-  const GPS_VALIDITY_MS = 60 * 60 * 1000;
   const gpsValid =
     latestLocation?.status === "tersedia" &&
+    isGpsAccuracyAccepted(latestLocation.accuracy) &&
     new Date(latestLocation.capturedAt).getTime() >=
       Date.now() - GPS_VALIDITY_MS;
 
-  if (tugas.requireGps && canWork && !gpsValid) {
+  if (
+    tugas.requireGps &&
+    canWork &&
+    !gpsValid &&
+    !gpsBypassActive
+  ) {
     return (
       <>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -146,6 +152,11 @@ export default async function SiswaTugasDetailPage({
               {tugas.blockCopyPaste ? (
                 <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-rose-700 ring-1 ring-rose-100">
                   Copy/paste dikunci
+                </span>
+              ) : null}
+              {gpsBypassActive ? (
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100">
+                  Akses via kode guru
                 </span>
               ) : null}
               {tugas.dueAt ? (
