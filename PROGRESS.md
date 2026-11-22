@@ -571,11 +571,108 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
 - Migration `0013_smart_stark_industries.sql` (additive):
   - `tugas.target_type` (`semua`/`kelas`/`siswa`) + backfill data lama;
   - tabel `tugas_targets` untuk siswa tertentu (unik per tugas+user, cascade).
+- Migration `0014_wealthy_cargill.sql` (additive):
+  - `tugas`: `min_score` (KKM), `repeat_until_pass`, `structure_rules` (jsonb),
+    `structure_weight`;
+  - `tugas_submissions`: `metrics`, `checks`, `output_score`, `structure_score`,
+    `passed`.
+- Migration `0015_ambitious_sasquatch.sql` (additive): `tugas.solution_code`
+  untuk **kunci jawaban** (hanya ditampilkan di akun guru).
 - Target tugas (eksklusif):
   - **Semua kelas**, **satu kelas**, atau **beberapa siswa** (tanpa batas
     jumlah, bisa lintas kelas/siswa tanpa kelas);
   - query halaman siswa dan Server Action submit sama-sama memeriksa target;
   - guru dapat melihat daftar target siswa dan jumlahnya di halaman detail.
+- **Pemeriksaan struktur otomatis** (AST di Web Worker, dievaluasi di server):
+  - tepat N `input()`, minimal N `print()`, minimal N baris output;
+  - variabel wajib + variabel nilai tetap/string, dengan nama **harus sama
+    persis** (huruf besar/kecil);
+  - **variabel dari `input()`**: harus di-assign dari `input()`/ekspresi yang
+    mengandung `input()`;
+  - variabel nilai tetap harus berupa string literal;
+  - **variabel wajib dipakai di `print()`**: dihitung bertahap berdasarkan
+    jumlah variabel yang dipakai (mis. 4/5 = 80%); rasio ini mengalikan nilai
+    akhir dan tetap wajib 5/5 untuk lulus;
+  - check **variabel input berasal dari `input()`** bersifat kritis: jika
+    gagal, nilai output dianggap 0 (anti-hardcode);
+  - larangan `for/while` dan `if/else` (termasuk ternary);
+  - worker mengirim metrik, server menghitung checklist & skor.
+- **Penilaian otomatis**:
+  - output (default 60%) + struktur (default 40%), bobot struktur dapat diatur;
+  - output **tidak lagi binary**: typo kecil mendapat nilai parsial berdasarkan
+    kemiripan per baris (Levenshtein), maksimal 92% dari bobot output;
+  - baris hilang/tambahan dan selisih jumlah baris mengurangi nilai;
+  - output kosong/error/timeout dan kegagalan check kritis = 0;
+  - status lulus membutuhkan nilai ≥ KKM **dan** semua struktur wajib lulus;
+  - guru tetap bisa override nilai manual.
+- **KKM & pengulangan**: `min_score` (mis. 75) dan `repeat_until_pass`:
+  - nilai ≥ KKM dan struktur wajib lengkap = Lulus;
+  - siswa masih boleh mengulang jika nilainya tinggi tetapi struktur wajib
+    belum lengkap;
+  - **jeda 5 menit** setelah percobaan ke-5, 10, 15, dst.; selama jeda Run dan
+    Kumpulkan dikunci (editor tetap bisa dilihat);
+  - deadline selalu didahulukan; jika lewat, submit ditolak;
+  - siswa hanya melihat nilai total + status, tanpa checklist/koreksi; modal
+    menampilkan pesan umum jika output kritis atau struktur wajib gagal.
+- Detail guru menampilkan **jawaban siswa** (kode), input yang dipakai,
+  output, error, checklist struktur, dan form nilai di dalam kartu pengumpulan
+  yang dapat dibuka/tutup.
+- Bagian **Pengumpulan Siswa** hanya menampilkan **attempt terakhir per siswa**
+  (data attempt lama tetap disimpan untuk hitung percobaan/jeda).
+- Kartu pengumpulan **tertutup default**: header berisi nama + ringkasan
+  (percobaan, waktu, status, nilai, lulus). Klik header untuk membuka
+  struktur, jawaban, output, diff, feedback, dan form nilai.
+- Ringkasan **roster tugas** di detail guru:
+  - jumlah siswa ditugaskan, lulus KKM, belum lulus, belum mengerjakan,
+    dan akun nonaktif;
+  - tabel siswa dengan pencarian + filter status;
+  - status **Lulus / Belum lulus / Sudah mengerjakan / Belum mengerjakan**;
+  - **pagination 15 siswa per halaman** (hanya muncul jika lebih dari 15);
+    filter/pencarian otomatis kembali ke halaman 1;
+  - tombol **Lihat jawaban** membuka **modal detail** siswa tanpa scroll/hash;
+    modal berisi checklist struktur, kode, input, output, error, diff,
+    feedback, dan form nilai. Bisa ditutup lewat tombol X, klik backdrop,
+    atau Escape.
+  - **perbandingan 2 siswa**: centang dua siswa di tabel (maksimal 2), lalu
+    klik **Bandingkan jawaban**. Modal menampilkan dua kolom detail jawaban,
+    ringkasan kode/output sama/berbeda, nilai, status, dan checklist struktur.
+    Form nilai disembunyikan di mode perbandingan; gunakan modal detail
+    tunggal untuk menilai.
+  - **Reset pekerjaan siswa** dari modal detail: konfirmasi, lalu seluruh
+    submission siswa pada tugas tersebut dihapus. Attempt, nilai, feedback,
+    status lulus, riwayat, dan jeda percobaan ikut ter-reset; target tugas
+    tidak dihapus. Hanya guru yang bisa melakukan reset.
+- Panel **Perbedaan output** di detail guru membandingkan output siswa dengan
+  target per baris:
+  - menandai baris berbeda/hilang/tambahan;
+  - menjelaskan kolom pertama yang berbeda (spasi, tab, karakter, karakter
+    kurang/tambahan);
+  - spasi divisualkan sebagai `·` dan tab sebagai `→`;
+  - mencatat bahwa auto-grade mengabaikan spasi akhir baris.
+- **Export Excel** progres tugas di detail guru:
+  - tombol **Export Excel** → `/guru/tugas/<id>/export`;
+  - khusus guru, 404 jika tugas tidak ada;
+  - sheet `Progres Tugas` berisi ringkasan (jenis, target, KKM, deadline,
+    jumlah ditugaskan/lulus/belum/belum mengerjakan/nonaktif) dan tabel semua
+    siswa: Nama, Username, Kelas, Status, Percobaan, Nilai Terakhir,
+    Nilai Terbaik, Lulus KKM, Terakhir Mengumpulkan, Akun;
+  - header freeze + auto-filter, warna status, file `progres-tugas-<id>.xlsx`.
+- **Preset lengkap** di form guru: *Bukti Peminjaman Alat Laboratorium* mengisi
+  judul, soal, kode awal, expected output (judul rata tengah), **kunci jawaban**,
+  target siswa, aturan struktur, bobot 40, KKM 75, dan ulangi sampai lulus.
+- Detail tugas guru menampilkan **Kunci jawaban (kode)** dan output yang
+  diharapkan; kunci tidak pernah dikirim ke halaman siswa.
+- Halaman siswa menampilkan kartu **Ketentuan Tugas** yang mudah dibaca:
+  chips **variabel yang harus dibuat**, variabel nilai tetap (string), aturan
+  program, KKM, dan info jeda. Kartu ini hanya berisi ketentuan statis — tidak
+  menampilkan hasil pemeriksaan/koreksi.
+- Siswa juga melihat panel **Output yang diharapkan** (open by default) di
+  samping console agar bisa membandingkan hasil Run dengan target soal. Panel
+  bisa dilipat dan tetap tidak menampilkan checklist/koreksi otomatis.
+- Setelah **Kumpulkan**, hasil tampil sebagai **modal di tengah layar**:
+  status lulus/belum lulus, nilai total, KKM, dan info jeda. Modal punya tombol
+  **Tutup**; halaman baru di-refresh setelah modal ditutup. Tidak ada koreksi
+  struktur/output yang ditampilkan ke siswa.
 - Guru membuat tugas dengan kode awal + **output yang diharapkan**:
   - auto-grade membandingkan stdout dengan expected output setelah normalisasi
     (CRLF, spasi akhir baris, trim);
@@ -598,6 +695,80 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   tugas kelas **9A** hanya terlihat oleh siswa 9A, dan siswa di luar target
   mendapat halaman 404. Data uji dihapus. `tsc --noEmit`, ESLint, dan
   `npm run build` bersih.
+- Status uji struktur/KKM (21 November 2026): preset mengisi form dengan benar;
+  kode valid (3 input, 17 print, 5 variabel) mendapat **100** (output 60 +
+  struktur 40, 7/7 aturan); kode `print("x")` mendapat **11** dan status
+  **Belum lulus**; percobaan ke-5 memicu jeda **5 menit** (Run & Kumpulkan
+  terkunci, countdown tampil), lalu aktif lagi setelah jeda lewat; deadline
+  lewat menutup tugas meski masih ada jeda; guru melihat checklist dan status
+  lulus. Data uji dihapus.
+- Status uji roster (21 November 2026): task target 3 siswa; roster menghitung
+  3 ditugaskan, 1 lulus KKM, 1 belum lulus, 1 belum mengerjakan; kartu
+  pengumpulan hanya menampilkan attempt terakhir (attempt lama tidak muncul).
+  Data uji dihapus.
+- Status uji kartu tertutup (22 November 2026): kartu pengumpulan default
+  tertutup; klik header membuka seluruh detail. Data uji dihapus.
+- Status uji pagination + modal roster (22 November 2026): task dengan 24 siswa
+  menampilkan **15 baris** di halaman 1 dan **9 baris** di halaman 2; filter
+  kembali ke halaman 1. Klik **Lihat jawaban** membuka modal tanpa mengubah
+  `scrollY`/hash; modal berisi detail jawaban, dapat ditutup lewat X, backdrop,
+  atau Escape. Data uji 20 siswa + task uji dihapus.
+- Status uji perbandingan 2 siswa (22 November 2026): centang dua siswa →
+  tombol **Bandingkan jawaban** aktif; modal menampilkan dua kolom detail,
+  ringkasan `Kode: berbeda`, `Output: sama`, `Nilai: 100 vs 80`, checklist,
+  kode, dan output. Form nilai tidak ditampilkan di mode perbandingan; modal
+  dapat ditutup dengan X/Escape dan tidak mengubah scroll. Diuji memakai data
+  tugas yang sudah ada.
+- Status uji reset pekerjaan siswa (22 November 2026): task + siswa uji dengan
+  1 submission bernilai 100; tombol **Reset pekerjaan** di modal, konfirmasi,
+  lalu submission dihapus. Roster berubah menjadi **0 percobaan / belum
+  mengerjakan**, jumlah pengumpulan menjadi 0, target tugas tetap ada.
+  Data uji dihapus.
+- Status uji export Excel (22 November 2026): route guru menghasilkan
+  `progres-tugas-<id>.xlsx` (200) dengan sheet `Progres Tugas`, ringkasan
+  target/KKM, serta baris lulus, belum lulus, dan belum mengerjakan; tanpa
+  login diarahkan ke halaman login dan ID tidak valid menghasilkan 404.
+  Data uji dihapus.
+- Status uji variabel input (22 November 2026): AST mendeteksi `nama` dari
+  `input()` dan penggunaannya di f-string/print. Kode
+  `nama = input(); print("Halo, Dimas")` mendapat **35/100**, output **0**,
+  status **tidak lulus**, dan check **wajib** gagal; kode
+  `nama = input(); print(f"Halo, {nama}")` mendapat **100/100** dan lulus.
+  Preset mengisi variabel input `nama, kelas, alat`; syarat yang sama juga
+  tampil di halaman siswa. Data uji dihapus. `tsc` dan ESLint bersih.
+- Status uji nilai parsial + struktur wajib (22 November 2026):
+  - typo 1 huruf pada 1 baris → output **53/60**, struktur **40/40**, total
+    **93/100**, status **lulus**;
+  - nama variabel `Judul` padahal diminta `judul` → output **60/60** tetapi
+    struktur **31/40**, total **91/100**, status **tidak lulus**;
+  - kode memakai `input()` tetapi `print()` ditulis hardcode → output **0**,
+    total **36/100**, status **tidak lulus**;
+  - siswa tetap bisa mengulang setelah nilai tinggi tetapi struktur wajib
+    gagal. Data uji dihapus.
+- Status uji variabel nilai tetap + print koma (22 November 2026):
+  - `print("Tanggal :", tanggal)` → **100/100**, lulus (pemisah koma
+    didukung);
+  - `tanggal` sudah dibuat tetapi `print("Tanggal : 28 November 2026")` →
+    variabel dipakai **4/5**, nilai akhir **80/100**, status **tidak lulus**
+    karena struktur wajib belum lengkap;
+  - `print` dengan `file=sys.stderr` tidak dihitung sebagai pemakaian variabel;
+  - preset diubah memakai pemisah koma, bukan f-string. Data uji dihapus.
+- Status uji skor variabel bertahap (22 November 2026): task 5 variabel;
+  kode dengan 4 variabel di print mendapat **80/100** (4/5), kode 5/5 mendapat
+  **100/100** dan lulus. Detail check menampilkan jumlah dan nama variabel yang
+  belum dipakai. Submission lama yang memakai hardcode tanggal diperbarui ke
+  **80/100, tidak lulus**. Data uji dihapus.
+- Status uji matriks penilaian (22 November 2026, harness `computeAutoGrade`
+  dengan 5 variabel):
+  - benar **100/lulus**; kurang `input()` **20**; nama variabel `Nama` **24**;
+    variabel `tanggal` terlewat **72**; isi tahun salah **94/lulus**;
+    spasi/garis `=`/`-` kurang **91/lulus**; typo karakter **94/lulus**;
+    sintaks salah **0**; output kurang 1 baris **68**; output tambahan
+    **86/lulus**; hardcode tanggal (4/5) **80/tidak lulus**; input bukan dari
+    `input()` **35**; `for/if` terlarang **90/tidak lulus**; `print()` kurang
+    **95/tidak lulus**; output kosong **30**.
+  - Catatan: kegagalan struktur wajib non-variabel (print kurang, for/if)
+    tetap menggagalkan status meskipun nilai totalnya masih tinggi.
 
 ### Deploy produksi (19 November 2026)
 

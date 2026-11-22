@@ -437,3 +437,26 @@ export function RotateCcw(props: IconProps) {
     </svg>
   );
 }
+
+export function Variable(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M8 21s-4-3-4-9 4-9 4-9" />
+      <path d="M16 3s4 3 4 9-4 9-4 9" />
+      <path d="m9 9 6 6" />
+      <path d="m15 9-6 6" />
+    </svg>
+  );
+}
+
+export function ListChecks(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="m3 17 2 2 4-4" />
+      <path d="m3 7 2 2 4-4" />
+      <path d="M13 6h8" />
+      <path d="M13 12h8" />
+      <path d="M13 18h8" />
+    </svg>
+  );
+}

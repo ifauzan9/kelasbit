@@ -12,10 +12,14 @@ import {
   type TugasTargetType,
 } from "@/lib/db/schema";
 import type {
+  TugasRoster,
+  TugasRosterRow,
   TugasSiswaView,
   TugasSubmissionView,
   TugasView,
 } from "@/lib/tugas/types";
+import type { TugasStructureRules } from "@/lib/tugas/rules";
+import { normalizeStructureRules } from "@/lib/tugas/rules";
 
 type TugasRow = {
   id: number;
@@ -26,8 +30,13 @@ type TugasRow = {
   kelasId: number | null;
   starterCode: string;
   expectedOutput: string;
+  solutionCode: string;
   maxScore: number;
   maxAttempts: number;
+  minScore: number | null;
+  repeatUntilPass: boolean;
+  structureRules: TugasStructureRules | null;
+  structureWeight: number;
   dueAt: Date | null;
   createdAt: Date;
   kelasName: string | null;
@@ -52,8 +61,13 @@ function toView(
     targetCount,
     starterCode: row.starterCode,
     expectedOutput: row.expectedOutput,
+    solutionCode: row.solutionCode,
     maxScore: row.maxScore,
     maxAttempts: row.maxAttempts,
+    minScore: row.minScore,
+    repeatUntilPass: row.repeatUntilPass,
+    structureRules: normalizeStructureRules(row.structureRules),
+    structureWeight: row.structureWeight,
     dueAt: row.dueAt ? row.dueAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     submissionCount,
@@ -69,8 +83,13 @@ const tugasSelect = {
   kelasId: tugas.kelasId,
   starterCode: tugas.starterCode,
   expectedOutput: tugas.expectedOutput,
+  solutionCode: tugas.solutionCode,
   maxScore: tugas.maxScore,
   maxAttempts: tugas.maxAttempts,
+  minScore: tugas.minScore,
+  repeatUntilPass: tugas.repeatUntilPass,
+  structureRules: tugas.structureRules,
+  structureWeight: tugas.structureWeight,
   dueAt: tugas.dueAt,
   createdAt: tugas.createdAt,
   kelasName: kelas.name,
@@ -156,12 +175,17 @@ function toSubmissionView(
     stderr: row.stderr,
     status: row.status as LabRunStatus,
     score: row.score,
+    outputScore: row.outputScore,
+    structureScore: row.structureScore,
+    passed: row.passed,
+    metrics: row.metrics,
+    checks: row.checks,
     feedback: row.feedback,
     submittedAt: row.submittedAt.toISOString(),
   };
 }
 
-export async function listSubmissionsForTugas(
+export async function listLatestSubmissionsForTugas(
   tugasId: number,
 ): Promise<TugasSubmissionView[]> {
   await requireUser("guru");
@@ -176,9 +200,166 @@ export async function listSubmissionsForTugas(
     .where(eq(tugasSubmissions.tugasId, tugasId))
     .orderBy(desc(tugasSubmissions.submittedAt), desc(tugasSubmissions.id));
 
-  return rows.map((row) =>
-    toSubmissionView({ ...row.submission, userName: row.userName }),
-  );
+  const seen = new Set<number>();
+  const latest: TugasSubmissionView[] = [];
+
+  for (const row of rows) {
+    if (seen.has(row.submission.userId)) continue;
+    seen.add(row.submission.userId);
+    latest.push(
+      toSubmissionView({ ...row.submission, userName: row.userName }),
+    );
+  }
+
+  return latest;
+}
+
+export async function getTugasRoster(
+  tugasId: number,
+): Promise<TugasRoster | null> {
+  await requireUser("guru");
+
+  const [assignment] = await getDb()
+    .select({
+      targetType: tugas.targetType,
+      kelasId: tugas.kelasId,
+      minScore: tugas.minScore,
+    })
+    .from(tugas)
+    .where(eq(tugas.id, tugasId))
+    .limit(1);
+
+  if (!assignment) return null;
+
+  const targetType = assignment.targetType as TugasTargetType;
+
+  const studentSelect = {
+    id: users.id,
+    name: users.name,
+    username: users.username,
+    isActive: users.isActive,
+    kelasName: kelas.name,
+    academicYear: kelas.academicYear,
+  };
+
+  let students: {
+    id: number;
+    name: string;
+    username: string | null;
+    isActive: boolean;
+    kelasName: string | null;
+    academicYear: string | null;
+  }[] = [];
+
+  if (targetType === "siswa") {
+    students = await getDb()
+      .select(studentSelect)
+      .from(tugasTargets)
+      .innerJoin(users, eq(users.id, tugasTargets.userId))
+      .leftJoin(kelas, eq(kelas.id, users.kelasId))
+      .where(eq(tugasTargets.tugasId, tugasId))
+      .orderBy(users.name);
+  } else {
+    const conditions = [eq(users.role, "siswa")];
+    if (targetType === "kelas" && assignment.kelasId !== null) {
+      conditions.push(eq(users.kelasId, assignment.kelasId));
+    }
+
+    students = await getDb()
+      .select(studentSelect)
+      .from(users)
+      .leftJoin(kelas, eq(kelas.id, users.kelasId))
+      .where(and(...conditions))
+      .orderBy(users.name);
+  }
+
+  const rawSubmissions = await getDb()
+    .select({
+      userId: tugasSubmissions.userId,
+      score: tugasSubmissions.score,
+      passed: tugasSubmissions.passed,
+      submittedAt: tugasSubmissions.submittedAt,
+    })
+    .from(tugasSubmissions)
+    .where(eq(tugasSubmissions.tugasId, tugasId))
+    .orderBy(desc(tugasSubmissions.submittedAt), desc(tugasSubmissions.id));
+
+  const byUser = new Map<
+    number,
+    { score: number | null; passed: boolean | null; submittedAt: Date }[]
+  >();
+
+  for (const submission of rawSubmissions) {
+    const list = byUser.get(submission.userId) ?? [];
+    list.push({
+      score: submission.score,
+      passed: submission.passed,
+      submittedAt: submission.submittedAt,
+    });
+    byUser.set(submission.userId, list);
+  }
+
+  const rows: TugasRosterRow[] = students.map((student) => {
+    const mine = byUser.get(student.id) ?? [];
+    const attempts = mine.length;
+    const latest = mine[0] ?? null;
+    const scores = mine
+      .map((item) => item.score)
+      .filter((value): value is number => typeof value === "number");
+    const bestScore = scores.length > 0 ? Math.max(...scores) : null;
+    const passed =
+      assignment.minScore !== null
+        ? attempts > 0
+          ? mine.some((item) => item.passed === true)
+          : null
+        : null;
+
+    const status =
+      passed === true
+        ? "lulus"
+        : attempts > 0
+          ? assignment.minScore !== null
+            ? "belum_lulus"
+            : "mengerjakan"
+          : "belum_mengerjakan";
+
+    return {
+      userId: student.id,
+      name: student.name,
+      username: student.username,
+      kelasLabel: student.kelasName
+        ? `${student.kelasName} · ${student.academicYear ?? ""}`.trim()
+        : null,
+      isActive: student.isActive,
+      attempts,
+      lastScore: latest?.score ?? null,
+      bestScore,
+      passed,
+      lastSubmittedAt: latest
+        ? latest.submittedAt.toISOString()
+        : null,
+      status,
+    };
+  });
+
+  const activeRows = rows.filter((row) => row.isActive);
+
+  return {
+    rows,
+    assignedCount: rows.length,
+    activeCount: activeRows.length,
+    passedCount: rows.filter((row) => row.passed === true).length,
+    failedCount: activeRows.filter(
+      (row) =>
+        row.attempts > 0 &&
+        row.passed === false &&
+        assignment.minScore !== null,
+    ).length,
+    workedCount: activeRows.filter((row) => row.attempts > 0).length,
+    notStartedCount: activeRows.filter((row) => row.attempts === 0).length,
+    inactiveCount: rows.filter((row) => !row.isActive).length,
+    hasKkm: assignment.minScore !== null,
+  };
 }
 
 async function siswaKelasId(userId: number): Promise<number | null> {
@@ -242,6 +423,12 @@ export async function listTugasForSiswa(): Promise<TugasSiswaView[]> {
       .map((item) => item.score)
       .filter((value): value is number => typeof value === "number");
     const bestScore = scores.length > 0 ? Math.max(...scores) : null;
+    const passed =
+      row.minScore !== null
+        ? mine.length > 0
+          ? mine.some((item) => item.passed === true)
+          : null
+        : null;
     const lastSubmittedAt =
       mine.length > 0
         ? mine
@@ -255,6 +442,7 @@ export async function listTugasForSiswa(): Promise<TugasSiswaView[]> {
       attemptsUsed: mine.length,
       attemptsLeft: Math.max(0, row.maxAttempts - mine.length),
       bestScore,
+      passed,
       lastSubmittedAt,
       closed:
         row.dueAt !== null && row.dueAt.getTime() <= now,

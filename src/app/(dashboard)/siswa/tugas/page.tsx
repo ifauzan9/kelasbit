@@ -66,16 +66,21 @@ export default async function SiswaTugasPage() {
         ) : (
           <ul className="grid gap-4 md:grid-cols-2">
             {rows.map((item) => {
+              const repeat = item.repeatUntilPass && item.minScore !== null;
+              const passed = item.passed === true;
               const selesai =
-                item.attemptsLeft <= 0 || item.bestScore !== null;
-              const status =
-                item.attemptsUsed === 0
-                  ? item.closed
-                    ? "Ditutup"
-                    : "Belum dikerjakan"
-                  : item.bestScore !== null
-                    ? `Dinilai: ${item.bestScore}/${item.maxScore}`
-                    : "Terkumpul";
+                passed || (!repeat && item.attemptsLeft <= 0);
+              const status = passed
+                ? "Lulus"
+                : item.closed
+                  ? "Ditutup"
+                  : item.attemptsUsed === 0
+                    ? "Belum dikerjakan"
+                    : item.minScore !== null
+                      ? "Belum lulus"
+                      : item.bestScore !== null
+                        ? `Dinilai: ${item.bestScore}/${item.maxScore}`
+                        : "Terkumpul";
 
               return (
                 <li
@@ -132,16 +137,32 @@ export default async function SiswaTugasPage() {
 
                   <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3 text-[11px]">
                     <span className="font-semibold text-slate-500">
-                      Sisa percobaan:{" "}
-                      <span className="font-extrabold text-slate-700">
-                        {item.attemptsLeft}
-                      </span>
+                      {repeat ? (
+                        <>
+                          Percobaan{" "}
+                          <span className="font-extrabold text-slate-700">
+                            {item.attemptsUsed}
+                          </span>
+                          {item.minScore !== null ? ` · KKM ${item.minScore}` : ""}
+                        </>
+                      ) : (
+                        <>
+                          Sisa percobaan:{" "}
+                          <span className="font-extrabold text-slate-700">
+                            {item.attemptsLeft}
+                          </span>
+                        </>
+                      )}
                     </span>
                     <Link
                       href={`/siswa/tugas/${item.id}`}
                       className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-emerald-700"
                     >
-                      {item.attemptsUsed > 0 ? "Lihat" : "Kerjakan"}
+                      {passed
+                        ? "Lihat"
+                        : item.attemptsUsed > 0
+                          ? "Kerjakan Ulang"
+                          : "Kerjakan"}
                     </Link>
                   </div>
                 </li>

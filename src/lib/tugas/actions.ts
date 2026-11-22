@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import {
@@ -13,7 +13,15 @@ import {
   type TugasJenis,
   type TugasTargetType,
 } from "@/lib/db/schema";
-import { autoScore } from "@/lib/tugas/grading";
+import { computeAutoGrade } from "@/lib/tugas/grading";
+import {
+  DEFAULT_STRUCTURE_WEIGHT,
+  RETRY_COOLDOWN_EVERY,
+  RETRY_COOLDOWN_MINUTES,
+  parseVariableInput,
+  type TugasMetrics,
+  type TugasStructureRules,
+} from "@/lib/tugas/rules";
 import { parseJakartaDateTime } from "@/lib/settings/maintenance";
 
 const MAX_CODE = 50_000;
@@ -35,6 +43,36 @@ function parseId(value: FormDataEntryValue | null): number | null {
 
 function clampText(value: FormDataEntryValue | null, max: number): string {
   return String(value ?? "").slice(0, max);
+}
+
+function sanitizeMetrics(value: unknown): TugasMetrics | null {
+  if (!value || typeof value !== "object") return null;
+
+  const raw = value as Record<string, unknown>;
+  const number = (key: string) => {
+    const parsed = Number(raw[key]);
+    return Number.isFinite(parsed) ? Math.max(0, Math.min(Math.round(parsed), 100_000)) : 0;
+  };
+  const list = (key: string) =>
+    Array.isArray(raw[key])
+      ? (raw[key] as unknown[])
+          .filter((item): item is string => typeof item === "string")
+          .slice(0, 200)
+      : [];
+
+  return {
+    syntaxOk: raw.syntaxOk === true,
+    inputCount: number("inputCount"),
+    printCount: number("printCount"),
+    outputLines: number("outputLines"),
+    assignedVariables: list("assignedVariables"),
+    inputVariables: list("inputVariables"),
+    printedVariables: list("printedVariables"),
+    literalVariables: list("literalVariables"),
+    hasFor: raw.hasFor === true,
+    hasWhile: raw.hasWhile === true,
+    hasIf: raw.hasIf === true,
+  };
 }
 
 function validateJenis(value: string): value is TugasJenis {
@@ -62,8 +100,35 @@ export async function createTugas(
   );
   const starterCode = clampText(formData.get("starterCode"), MAX_CODE);
   const expectedOutput = clampText(formData.get("expectedOutput"), MAX_OUTPUT);
+  const solutionCode = clampText(formData.get("solutionCode"), MAX_CODE);
   const maxScore = Number(formData.get("maxScore") ?? 100);
   const maxAttempts = Number(formData.get("maxAttempts") ?? 3);
+  const minScoreRaw = String(formData.get("minScore") ?? "").trim();
+  const repeatUntilPass = formData.get("repeatUntilPass") === "true";
+  const structureEnabled = formData.get("structureEnabled") === "true";
+  const structureWeight = Number(
+    formData.get("structureWeight") ?? DEFAULT_STRUCTURE_WEIGHT,
+  );
+  const exactInputsRaw = String(formData.get("exactInputs") ?? "").trim();
+  const minPrintsRaw = String(formData.get("minPrints") ?? "").trim();
+  const minOutputLinesRaw = String(
+    formData.get("minOutputLines") ?? "",
+  ).trim();
+  const exactInputs = exactInputsRaw ? Number(exactInputsRaw) : null;
+  const minPrints = minPrintsRaw ? Number(minPrintsRaw) : null;
+  const minOutputLines = minOutputLinesRaw ? Number(minOutputLinesRaw) : null;
+  const requiredVariables = parseVariableInput(
+    String(formData.get("requiredVariables") ?? ""),
+  );
+  const inputVariables = parseVariableInput(
+    String(formData.get("inputVariables") ?? ""),
+  );
+  const literalVariables = parseVariableInput(
+    String(formData.get("literalVariables") ?? ""),
+  );
+  const forbidLoops = formData.get("forbidLoops") === "true";
+  const forbidConditionals =
+    formData.get("forbidConditionals") === "true";
   const dueRaw = String(formData.get("dueAt") ?? "").trim();
 
   if (!title) return { error: "Judul tugas wajib diisi." };
@@ -77,6 +142,79 @@ export async function createTugas(
   }
   if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 10) {
     return { error: "Jumlah percobaan harus 1–10." };
+  }
+  if (
+    !Number.isInteger(structureWeight) ||
+    structureWeight < 0 ||
+    structureWeight > 100
+  ) {
+    return { error: "Bobot struktur harus 0–100." };
+  }
+
+  let minScore: number | null = null;
+  if (minScoreRaw) {
+    minScore = Number(minScoreRaw);
+    if (
+      !Number.isInteger(minScore) ||
+      minScore < 0 ||
+      minScore > maxScore
+    ) {
+      return { error: `KKM harus 0–${maxScore}.` };
+    }
+  }
+
+  if (repeatUntilPass && minScore === null) {
+    return { error: "Isi KKM jika memilih ulangi sampai lulus." };
+  }
+
+  for (const [label, value] of [
+    ["Jumlah input", exactInputs],
+    ["Minimal print", minPrints],
+    ["Minimal baris output", minOutputLines],
+  ] as const) {
+    if (
+      value !== null &&
+      (!Number.isInteger(value) || value < 0 || value > 100_000)
+    ) {
+      return { error: `${label} tidak valid.` };
+    }
+  }
+
+  const variableConflict = inputVariables.filter((name) =>
+    literalVariables.includes(name),
+  );
+  if (variableConflict.length > 0) {
+    return {
+      error: `Variabel tidak boleh sekaligus dari input dan nilai tetap: ${variableConflict.join(", ")}.`,
+    };
+  }
+
+  const structureRules: TugasStructureRules | null = structureEnabled
+    ? {
+        enabled: true,
+        exactInputs,
+        minPrints,
+        minOutputLines,
+        requiredVariables,
+        inputVariables,
+        literalVariables,
+        forbidLoops,
+        forbidConditionals,
+      }
+    : null;
+
+  if (
+    structureEnabled &&
+    exactInputs === null &&
+    minPrints === null &&
+    minOutputLines === null &&
+    requiredVariables.length === 0 &&
+    inputVariables.length === 0 &&
+    literalVariables.length === 0 &&
+    !forbidLoops &&
+    !forbidConditionals
+  ) {
+    return { error: "Pilih minimal satu aturan struktur." };
   }
 
   const targetType = targetTypeRaw as TugasTargetType;
@@ -139,8 +277,13 @@ export async function createTugas(
           kelasId,
           starterCode,
           expectedOutput,
+          solutionCode,
           maxScore,
           maxAttempts,
+          minScore,
+          repeatUntilPass,
+          structureRules,
+          structureWeight,
           dueAt,
         })
         .returning({ id: tugas.id });
@@ -188,6 +331,7 @@ export type SubmitTugasInput = {
   stdout: string;
   stderr: string;
   status: LabRunStatus;
+  metrics: TugasMetrics | null;
 };
 
 export type SubmitTugasResult =
@@ -195,10 +339,16 @@ export type SubmitTugasResult =
       ok: true;
       submissionId: number;
       score: number | null;
-      attemptsLeft: number;
+      passed: boolean | null;
+      attemptsLeft: number | null;
+      cooldownUntil: string | null;
       feedback: string | null;
+      mandatoryFailed: boolean;
+      criticalFailed: boolean;
+      variableUsed: number;
+      variableTotal: number;
     }
-  | { ok: false; error: string };
+  | { ok: false; error: string; cooldownUntil?: string };
 
 export async function submitTugas(
   input: SubmitTugasInput,
@@ -260,23 +410,60 @@ export async function submitTugas(
     return { ok: false, error: "Tugas ini bukan untukmu." };
   }
 
+  // Deadline selalu didahulukan, termasuk saat masa jeda.
   if (assignment.dueAt && assignment.dueAt.getTime() <= Date.now()) {
     return { ok: false, error: "Batas waktu pengumpulan sudah lewat." };
   }
 
-  const [attemptRow] = await getDb()
-    .select({ total: sql<number>`count(*)::int` })
+  const attempts = await getDb()
+    .select({
+      score: tugasSubmissions.score,
+      passed: tugasSubmissions.passed,
+      submittedAt: tugasSubmissions.submittedAt,
+    })
     .from(tugasSubmissions)
     .where(
       and(
         eq(tugasSubmissions.tugasId, assignment.id),
         eq(tugasSubmissions.userId, user.id),
       ),
-    );
+    )
+    .orderBy(desc(tugasSubmissions.submittedAt), desc(tugasSubmissions.id));
 
-  const attemptsUsed = attemptRow?.total ?? 0;
+  const attemptsUsed = attempts.length;
+  const repeatUntilPass =
+    assignment.repeatUntilPass && assignment.minScore !== null;
+  const alreadyPassed = attempts.some((item) => item.passed === true);
 
-  if (attemptsUsed >= assignment.maxAttempts) {
+  if (repeatUntilPass && alreadyPassed) {
+    return {
+      ok: false,
+      error: "Kamu sudah lulus tugas ini. Tidak perlu mengulang.",
+    };
+  }
+
+  // Jeda setelah percobaan ke-5, 10, 15, ...
+  if (
+    repeatUntilPass &&
+    attemptsUsed > 0 &&
+    attemptsUsed % RETRY_COOLDOWN_EVERY === 0
+  ) {
+    const lastSubmittedAt = attempts[0]?.submittedAt;
+    if (lastSubmittedAt) {
+      const until = new Date(
+        lastSubmittedAt.getTime() + RETRY_COOLDOWN_MINUTES * 60_000,
+      );
+      if (Date.now() < until.getTime()) {
+        return {
+          ok: false,
+          error: `Istirahat dulu ${RETRY_COOLDOWN_MINUTES} menit sebelum mencoba lagi.`,
+          cooldownUntil: until.toISOString(),
+        };
+      }
+    }
+  }
+
+  if (!repeatUntilPass && attemptsUsed >= assignment.maxAttempts) {
     return {
       ok: false,
       error: "Percobaan sudah habis. Hubungi guru untuk remedial.",
@@ -285,7 +472,22 @@ export async function submitTugas(
 
   const stdout = clampText(input.stdout, MAX_OUTPUT);
   const stderr = clampText(input.stderr, MAX_OUTPUT);
-  const score = autoScore(stdout, assignment.expectedOutput, assignment.maxScore);
+  const metrics = sanitizeMetrics(input.metrics);
+
+  const grade = computeAutoGrade({
+    stdout,
+    expectedOutput: assignment.expectedOutput,
+    status: input.status,
+    maxScore: assignment.maxScore,
+    structureRules: assignment.structureRules,
+    structureWeight: assignment.structureWeight,
+    metrics,
+  });
+
+  const passed =
+    assignment.minScore !== null && grade.totalScore !== null
+      ? grade.totalScore >= assignment.minScore && !grade.mandatoryFailed
+      : null;
 
   try {
     const [row] = await getDb()
@@ -299,16 +501,41 @@ export async function submitTugas(
         stdout,
         stderr,
         status: input.status,
-        score,
+        score: grade.totalScore,
+        outputScore: grade.outputScore,
+        structureScore: grade.structureScore,
+        passed,
+        metrics,
+        checks: grade.checks,
       })
       .returning({ id: tugasSubmissions.id });
+
+    let cooldownUntil: string | null = null;
+    if (
+      repeatUntilPass &&
+      passed === false &&
+      grade.totalScore !== null &&
+      (attemptsUsed + 1) % RETRY_COOLDOWN_EVERY === 0
+    ) {
+      cooldownUntil = new Date(
+        Date.now() + RETRY_COOLDOWN_MINUTES * 60_000,
+      ).toISOString();
+    }
 
     return {
       ok: true,
       submissionId: row.id,
-      score,
-      attemptsLeft: Math.max(0, assignment.maxAttempts - attemptsUsed - 1),
+      score: grade.totalScore,
+      passed,
+      attemptsLeft: repeatUntilPass
+        ? null
+        : Math.max(0, assignment.maxAttempts - attemptsUsed - 1),
+      cooldownUntil,
       feedback: null,
+      mandatoryFailed: grade.mandatoryFailed,
+      criticalFailed: grade.criticalFailed,
+      variableUsed: grade.variableUsed,
+      variableTotal: grade.variableTotal,
     };
   } catch (error) {
     console.error("tugas: gagal menyimpan submission", error);
@@ -346,8 +573,7 @@ export async function gradeSubmission(input: {
   submissionId: number;
   score: number;
   feedback: string;
-}): Promise<GradeSubmissionResult> {
-  await requireUser("guru");
+}): Promise<GradeSubmissionResult> {  await requireUser("guru");
 
   if (!Number.isInteger(input.submissionId) || input.submissionId <= 0) {
     return { ok: false, error: "Submission tidak valid." };
@@ -357,6 +583,7 @@ export async function gradeSubmission(input: {
     .select({
       id: tugasSubmissions.id,
       maxScore: tugas.maxScore,
+      minScore: tugas.minScore,
     })
     .from(tugasSubmissions)
     .innerJoin(tugas, eq(tugas.id, tugasSubmissions.tugasId))
@@ -381,6 +608,8 @@ export async function gradeSubmission(input: {
       .update(tugasSubmissions)
       .set({
         score: input.score,
+        passed:
+          row.minScore !== null ? input.score >= row.minScore : null,
         feedback: String(input.feedback ?? "").slice(0, 2_000) || null,
         gradedAt: new Date(),
       })
@@ -391,4 +620,68 @@ export async function gradeSubmission(input: {
   }
 
   return { ok: true };
+}
+
+export type ResetTugasSubmissionResult = {
+  ok: boolean;
+  error?: string;
+  deleted?: number;
+};
+
+/**
+ * Hapus seluruh submission satu siswa pada satu tugas. Ini mereset attempt,
+ * nilai, status lulus, riwayat, dan jeda percobaan karena semuanya diturunkan
+ * dari baris tugas_submissions.
+ */
+export async function resetTugasSubmission(input: {
+  tugasId: number;
+  userId: number;
+}): Promise<ResetTugasSubmissionResult> {
+  await requireUser("guru");
+
+  if (
+    !Number.isInteger(input.tugasId) ||
+    input.tugasId <= 0 ||
+    !Number.isInteger(input.userId) ||
+    input.userId <= 0
+  ) {
+    return { ok: false, error: "Data reset tidak valid." };
+  }
+
+  const [assignment] = await getDb()
+    .select({ id: tugas.id })
+    .from(tugas)
+    .where(eq(tugas.id, input.tugasId))
+    .limit(1);
+
+  if (!assignment) return { ok: false, error: "Tugas tidak ditemukan." };
+
+  const [student] = await getDb()
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.id, input.userId), eq(users.role, "siswa")))
+    .limit(1);
+
+  if (!student) return { ok: false, error: "Siswa tidak ditemukan." };
+
+  try {
+    const deleted = await getDb()
+      .delete(tugasSubmissions)
+      .where(
+        and(
+          eq(tugasSubmissions.tugasId, input.tugasId),
+          eq(tugasSubmissions.userId, input.userId),
+        ),
+      )
+      .returning({ id: tugasSubmissions.id });
+
+    if (deleted.length === 0) {
+      return { ok: false, error: "Belum ada pekerjaan untuk direset." };
+    }
+
+    return { ok: true, deleted: deleted.length };
+  } catch (error) {
+    console.error("tugas: gagal mereset pekerjaan siswa", error);
+    return { ok: false, error: "Gagal mereset pekerjaan. Coba lagi." };
+  }
 }

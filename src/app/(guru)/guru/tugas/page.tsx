@@ -145,6 +145,11 @@ export default async function GuruTugasPage() {
                       <p className="mt-1.5 text-[11px] font-medium text-slate-400">
                         {item.submissionCount} pengumpulan · nilai maks{" "}
                         {item.maxScore} · {item.maxAttempts} percobaan
+                        {item.minScore !== null
+                          ? ` · KKM ${item.minScore}${
+                              item.repeatUntilPass ? " (ulangi)" : ""
+                            }`
+                          : ""}
                         {item.expectedOutput.trim()
                           ? " · auto-grade"
                           : " · nilai manual"}

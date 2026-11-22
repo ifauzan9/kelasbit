@@ -7,6 +7,8 @@ import {
   AlertCircle,
   CheckCircle2,
   CodeXml,
+  Eye,
+  Info,
   Play,
   RotateCcw,
   Square,
@@ -15,6 +17,7 @@ import { ConsolePanel } from "@/components/lab/console-panel";
 import { InputPromptDialog } from "@/components/lab/input-prompt-dialog";
 import type { LabRunStatus } from "@/lib/db/schema";
 import { submitTugas } from "@/lib/tugas/actions";
+import type { TugasMetrics } from "@/lib/tugas/rules";
 
 const PythonEditor = dynamic(
   () => import("@/components/lab/python-editor").then((mod) => mod.PythonEditor),
@@ -44,6 +47,7 @@ type WorkerMessage =
       durationMs: number;
       stdout: string;
       stderr: string;
+      metrics: TugasMetrics | null;
     }
   | { type: "fatal"; message: string };
 
@@ -53,6 +57,7 @@ type LastRun = {
   stdout: string;
   stderr: string;
   status: LabRunStatus;
+  metrics: TugasMetrics | null;
 };
 
 const RUNTIME_LABEL: Record<RuntimeState, string> = {
@@ -71,18 +76,35 @@ const DEFAULT_CODE = `# Tulis kodemu di sini
 print("Halo, dunia!")
 `;
 
+function formatRemaining(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 export function TugasWorkspace({
   tugasId,
   starterCode,
   maxScore,
+  minScore,
+  repeatUntilPass,
   attemptsLeft,
+  attemptsUsed,
   closed,
+  initialCooldownUntil,
+  expectedOutput,
 }: {
   tugasId: number;
   starterCode: string;
   maxScore: number;
+  minScore: number | null;
+  repeatUntilPass: boolean;
   attemptsLeft: number;
+  attemptsUsed: number;
   closed: boolean;
+  initialCooldownUntil: string | null;
+  expectedOutput: string;
 }) {
   const router = useRouter();
   const draftKey = `kelasbit:tugas:${tugasId}:draft`;
@@ -101,10 +123,21 @@ export function TugasWorkspace({
   } | null>(null);
   const [lastRun, setLastRun] = useState<LastRun | null>(null);
   const [attempts, setAttempts] = useState(attemptsLeft);
+  const [used, setUsed] = useState(attemptsUsed);
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(
+    initialCooldownUntil ? new Date(initialCooldownUntil).getTime() : null,
+  );
+  const [now, setNow] = useState(() => Date.now());
+  const [completed, setCompleted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showResultModal, setShowResultModal] = useState(false);
   const [result, setResult] = useState<{
     score: number | null;
-    attemptsLeft: number;
+    passed: boolean | null;
+    mandatoryFailed: boolean;
+    criticalFailed: boolean;
+    variableUsed: number;
+    variableTotal: number;
   } | null>(null);
 
   const workerRef = useRef<Worker | null>(null);
@@ -171,6 +204,7 @@ export function TugasWorkspace({
           stdout: data.stdout,
           stderr: data.stderr,
           status: data.status,
+          metrics: data.metrics ?? null,
         });
         return;
       }
@@ -249,6 +283,7 @@ export function TugasWorkspace({
         stdout: "",
         stderr: "Waktu eksekusi melebihi 5 detik. Program dihentikan.",
         status: "timeout",
+        metrics: null,
       });
       createWorker();
     }, RUN_TIMEOUT_MS);
@@ -256,6 +291,9 @@ export function TugasWorkspace({
 
   function handleRun() {
     if (runningRef.current || runtime !== "ready" || !workerRef.current) return;
+    if (closed || completed) return;
+    if (cooldownUntil && cooldownUntil > Date.now()) return;
+    if (!repeatUntilPass && attempts <= 0) return;
 
     answersRef.current = [];
     outputRef.current = { stdout: "", stderr: "" };
@@ -301,6 +339,7 @@ export function TugasWorkspace({
       stdout: outputRef.current.stdout,
       stderr: outputRef.current.stderr,
       status,
+      metrics: null,
     });
     workerRef.current?.terminate();
     createWorker();
@@ -314,10 +353,25 @@ export function TugasWorkspace({
     stopWith("stopped", "Eksekusi dihentikan oleh pengguna.");
   }
 
-  const canAttempt = attempts > 0 && !closed;
+  useEffect(() => {
+    if (!cooldownUntil) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [cooldownUntil]);
+
+  const cooldownLeft = cooldownUntil
+    ? Math.max(0, cooldownUntil - now)
+    : 0;
+  const cooldownActive = cooldownLeft > 0;
+  const canAttempt =
+    !closed &&
+    !completed &&
+    (repeatUntilPass || attempts > 0);
+  const canRun = canAttempt && !cooldownActive;
   const codeFresh = lastRun !== null && lastRun.code === code;
   const canSubmit =
     canAttempt &&
+    !cooldownActive &&
     !running &&
     !submitting &&
     codeFresh &&
@@ -326,13 +380,7 @@ export function TugasWorkspace({
   async function handleSubmit() {
     if (!canSubmit || !lastRun) return;
 
-    if (
-      !window.confirm(
-        `Kumpulkan jawaban ini? Sisa percobaan sebelum submit: ${attempts}.`,
-      )
-    ) {
-      return;
-    }
+    if (!window.confirm("Kumpulkan jawaban ini sekarang?")) return;
 
     setSubmitting(true);
     const response = await submitTugas({
@@ -342,36 +390,61 @@ export function TugasWorkspace({
       stdout: lastRun.stdout,
       stderr: lastRun.stderr,
       status: lastRun.status,
+      metrics: lastRun.metrics,
     });
     setSubmitting(false);
 
     if (!response.ok) {
       setNotice(response.error);
+      if (response.cooldownUntil) {
+        setCooldownUntil(new Date(response.cooldownUntil).getTime());
+      }
       return;
     }
 
-    setAttempts(response.attemptsLeft);
+    setUsed((value) => value + 1);
+    if (response.attemptsLeft !== null) setAttempts(response.attemptsLeft);
+    setCooldownUntil(
+      response.cooldownUntil
+        ? new Date(response.cooldownUntil).getTime()
+        : null,
+    );
     setResult({
       score: response.score,
-      attemptsLeft: response.attemptsLeft,
+      passed: response.passed,
+      mandatoryFailed: response.mandatoryFailed,
+      criticalFailed: response.criticalFailed,
+      variableUsed: response.variableUsed,
+      variableTotal: response.variableTotal,
     });
+    if (response.passed === true) setCompleted(true);
     setLastRun(null);
+    setShowResultModal(true);
+  }
+
+  function closeResultModal() {
+    setShowResultModal(false);
+    setResult(null);
     router.refresh();
   }
 
   const submitHint = closed
     ? "Batas waktu sudah lewat."
-    : attempts <= 0
-      ? "Percobaan sudah habis."
-      : running
-        ? "Tunggu program selesai."
-        : !lastRun
-          ? "Klik Run dulu sebelum mengumpulkan."
-          : lastRun.status !== "success"
-            ? "Perbaiki error/timeout dulu sebelum mengumpulkan."
-            : lastRun.code !== code
-              ? "Kode berubah — klik Run lagi agar hasilnya sesuai."
-              : null;
+    : completed
+      ? "Kamu sudah lulus tugas ini."
+      : cooldownActive
+        ? `Istirahat dulu — coba lagi dalam ${formatRemaining(cooldownLeft)}.`
+        : !repeatUntilPass && attempts <= 0
+          ? "Percobaan sudah habis."
+          : running
+            ? "Tunggu program selesai."
+            : !lastRun
+              ? "Klik Run dulu sebelum mengumpulkan."
+              : lastRun.status !== "success"
+                ? "Perbaiki error/timeout dulu sebelum mengumpulkan."
+                : lastRun.code !== code
+                  ? "Kode berubah — klik Run lagi agar hasilnya sesuai."
+                  : null;
 
   return (
     <div className="space-y-4">
@@ -392,17 +465,39 @@ export function TugasWorkspace({
         </span>
 
         <span className="text-[11px] font-semibold text-slate-500">
-          Sisa percobaan: <span className="font-extrabold text-slate-700">{attempts}</span>
+          {repeatUntilPass ? (
+            <>
+              Percobaan ke-
+              <span className="font-extrabold text-slate-700">
+                {used + 1}
+              </span>
+            </>
+          ) : (
+            <>
+              Sisa percobaan:{" "}
+              <span className="font-extrabold text-slate-700">{attempts}</span>
+            </>
+          )}
         </span>
+        {minScore !== null ? (
+          <span className="text-[11px] font-semibold text-slate-500">
+            KKM: <span className="font-extrabold text-slate-700">{minScore}</span>
+          </span>
+        ) : null}
         <span className="text-[11px] font-semibold text-slate-500">
           Nilai maks: <span className="font-extrabold text-slate-700">{maxScore}</span>
         </span>
+        {cooldownActive ? (
+          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-extrabold text-amber-800 ring-1 ring-amber-200">
+            Istirahat {formatRemaining(cooldownLeft)}
+          </span>
+        ) : null}
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={handleRun}
-            disabled={running || runtime !== "ready" || !canAttempt}
+            disabled={running || runtime !== "ready" || !canRun}
             className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-[11px] font-bold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Play className="h-3.5 w-3.5" />
@@ -452,19 +547,7 @@ export function TugasWorkspace({
         </p>
       ) : null}
 
-      {result ? (
-        <p
-          role="status"
-          className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs font-semibold text-emerald-800"
-        >
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          {result.score === null
-            ? "Jawaban terkumpul. Menunggu penilaian guru."
-            : `Jawaban terkumpul. Nilai otomatis: ${result.score} / ${maxScore}.`}
-        </p>
-      ) : null}
-
-      {submitHint && !result ? (
+      {submitHint && (!result || cooldownActive) ? (
         <p className="text-[11px] font-medium text-slate-400">{submitHint}</p>
       ) : null}
 
@@ -496,12 +579,119 @@ export function TugasWorkspace({
               setDurationMs(null);
             }}
           />
+
+          {expectedOutput.trim() ? (
+            <details
+              open
+              className="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-[0_1px_2px_rgba(16,12,40,0.04)]"
+            >
+              <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 border-b border-emerald-100 bg-emerald-50 px-3.5 py-2.5">
+                <span className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-wide text-emerald-800">
+                  <Eye className="h-3.5 w-3.5" />
+                  Output yang diharapkan
+                </span>
+                <span className="text-[10px] font-medium text-emerald-700/60">
+                  Bandingkan dengan console
+                </span>
+              </summary>
+              <pre className="max-h-72 overflow-auto whitespace-pre bg-white px-3.5 py-3 font-mono text-[11px] leading-relaxed text-slate-800">
+                {expectedOutput}
+              </pre>
+            </details>
+          ) : null}
+
           <p className="text-[11px] leading-relaxed text-slate-400">
             Kode dijalankan di browser. Hasil Run terakhir yang akan dikumpulkan
             harus berasal dari kode saat ini.
           </p>
         </div>
       </div>
+
+      {result && showResultModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tugas-result-title"
+            className="w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-[0_30px_80px_-20px_rgba(2,6,23,0.55)]"
+          >
+            <span
+              className={`mx-auto flex h-14 w-14 items-center justify-center rounded-2xl ring-1 ${
+                result.passed === true
+                  ? "bg-emerald-50 text-emerald-600 ring-emerald-100"
+                  : result.score === null
+                    ? "bg-sky-50 text-sky-600 ring-sky-100"
+                    : "bg-amber-50 text-amber-600 ring-amber-100"
+              }`}
+            >
+              {result.passed === true ? (
+                <CheckCircle2 className="h-7 w-7" />
+              ) : result.score === null ? (
+                <Info className="h-7 w-7" />
+              ) : (
+                <AlertCircle className="h-7 w-7" />
+              )}
+            </span>
+
+            <h2
+              id="tugas-result-title"
+              className="mt-4 text-xl font-extrabold tracking-tight text-slate-900"
+            >
+              {result.passed === true
+                ? "Selamat, kamu lulus!"
+                : result.criticalFailed
+                  ? "Output belum bisa dinilai"
+                  : result.mandatoryFailed
+                    ? "Struktur wajib belum lengkap"
+                    : result.score === null
+                      ? "Jawaban terkumpul"
+                      : "Belum lulus"}
+            </h2>
+
+            <p className="mt-2 text-3xl font-extrabold tracking-tight text-slate-900">
+              {result.score === null ? "—" : result.score}
+              <span className="ml-1 text-sm font-bold text-slate-400">
+                / {maxScore}
+              </span>
+            </p>
+
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">
+              {result.passed === true
+                ? `Nilai kamu sudah mencapai KKM ${
+                    minScore ?? 0
+                  }. Tugas selesai.`
+                : result.criticalFailed
+                  ? "Variabel input belum dibuat dari input(). Nilai output belum dihitung."
+                  : result.mandatoryFailed
+                    ? result.variableTotal > 0 &&
+                      result.variableUsed < result.variableTotal
+                      ? `Variabel yang dipakai di print(): ${result.variableUsed} dari ${result.variableTotal}. Lengkapi semua variabel wajib.`
+                      : "Nama variabel, jumlah input/print, atau aturan struktur lain belum sesuai. Periksa ketentuan tugas."
+                    : result.score === null
+                      ? "Jawabanmu sudah tersimpan. Menunggu penilaian guru."
+                      : minScore !== null
+                        ? `Nilai minimal lulus adalah ${minScore}. Silakan kerjakan ulang.`
+                        : "Silakan kerjakan ulang jika ingin memperbaiki nilai."}
+            </p>
+
+            {cooldownActive && result.passed !== true ? (
+              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
+                Istirahat dulu {formatRemaining(cooldownLeft)} sebelum mencoba
+                lagi.
+              </p>
+            ) : null}
+
+            <button
+              type="button"
+              autoFocus
+              onClick={closeResultModal}
+              className="mt-5 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-slate-800"
+            >
+              Tutup
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {pendingPrompt ? (
         <InputPromptDialog

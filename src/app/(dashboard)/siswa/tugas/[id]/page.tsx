@@ -6,8 +6,13 @@ import {
   ClipboardList,
   GraduationCap,
 } from "@/components/icons";
+import { TugasRequirements } from "@/components/tugas/tugas-requirements";
 import { TugasWorkspace } from "@/components/tugas/tugas-workspace";
 import { getTugasForSiswa } from "@/lib/tugas/queries";
+import {
+  RETRY_COOLDOWN_EVERY,
+  RETRY_COOLDOWN_MINUTES,
+} from "@/lib/tugas/rules";
 
 export const metadata: Metadata = {
   title: "Kerjakan Tugas — KelasBit",
@@ -59,8 +64,33 @@ export default async function SiswaTugasDetailPage({
 
   const { tugas, submissions } = data;
   const attemptsLeft = Math.max(0, tugas.maxAttempts - submissions.length);
-  const closed = tugas.dueAt !== null && new Date(tugas.dueAt).getTime() <= Date.now();
-  const canWork = !closed && attemptsLeft > 0;
+  const closed =
+    tugas.dueAt !== null && new Date(tugas.dueAt).getTime() <= Date.now();
+  const bestScore = submissions.reduce<number | null>((best, item) => {
+    if (item.score === null) return best;
+    return best === null ? item.score : Math.max(best, item.score);
+  }, null);
+  const passed =
+    tugas.minScore !== null
+      ? submissions.length > 0
+        ? submissions.some((item) => item.passed === true)
+        : null
+      : null;
+  const repeat = tugas.repeatUntilPass && tugas.minScore !== null;
+  const canWork =
+    !closed && passed !== true && (repeat || attemptsLeft > 0);
+
+  let cooldownUntil: string | null = null;
+  if (
+    repeat &&
+    passed !== true &&
+    submissions.length > 0 &&
+    submissions.length % RETRY_COOLDOWN_EVERY === 0
+  ) {
+    const last = new Date(submissions[0].submittedAt).getTime();
+    const until = last + RETRY_COOLDOWN_MINUTES * 60_000;
+    if (Date.now() < until) cooldownUntil = new Date(until).toISOString();
+  }
 
   return (
     <>
@@ -72,7 +102,9 @@ export default async function SiswaTugasDetailPage({
           ← Kembali ke daftar tugas
         </Link>
         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-600 ring-1 ring-slate-200">
-          Percobaan {submissions.length} / {tugas.maxAttempts}
+          {repeat
+            ? `${submissions.length} percobaan`
+            : `Percobaan ${submissions.length} / ${tugas.maxAttempts}`}
         </span>
       </div>
 
@@ -112,8 +144,18 @@ export default async function SiswaTugasDetailPage({
               </span>
               <span>·</span>
               <span>Nilai maks {tugas.maxScore}</span>
+              {tugas.minScore !== null ? (
+                <>
+                  <span>·</span>
+                  <span>KKM {tugas.minScore}</span>
+                </>
+              ) : null}
               <span>·</span>
-              <span>Sisa percobaan {attemptsLeft}</span>
+              <span>
+                {repeat
+                  ? `Percobaan ${submissions.length} (ulangi sampai lulus)`
+                  : `Sisa percobaan ${attemptsLeft}`}
+              </span>
             </div>
           </div>
         </div>
@@ -125,17 +167,38 @@ export default async function SiswaTugasDetailPage({
         ) : null}
       </section>
 
+      <TugasRequirements
+        rules={tugas.structureRules}
+        minScore={tugas.minScore}
+        repeatUntilPass={repeat}
+      />
+
+      {passed === true ? (
+        <p
+          role="status"
+          className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800"
+        >
+          Lulus! Nilai terbaikmu {bestScore} / {tugas.maxScore}
+          {tugas.minScore !== null ? ` (KKM ${tugas.minScore})` : ""}.
+        </p>
+      ) : null}
+
       {canWork ? (
         <div className="mt-6">
           <TugasWorkspace
             tugasId={tugas.id}
             starterCode={tugas.starterCode}
             maxScore={tugas.maxScore}
+            minScore={tugas.minScore}
+            repeatUntilPass={repeat}
             attemptsLeft={attemptsLeft}
+            attemptsUsed={submissions.length}
+            initialCooldownUntil={cooldownUntil}
             closed={closed}
+            expectedOutput={tugas.expectedOutput}
           />
         </div>
-      ) : (
+      ) : passed === true ? null : (
         <p className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
           {closed
             ? "Batas waktu pengumpulan sudah lewat."

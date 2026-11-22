@@ -3,6 +3,7 @@ import {
   doublePrecision,
   index,
   integer,
+  jsonb,
   pgTable,
   serial,
   text,
@@ -10,6 +11,11 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
+import type {
+  TugasCheck,
+  TugasMetrics,
+  TugasStructureRules,
+} from "@/lib/tugas/rules";
 
 export const kelas = pgTable(
   "kelas",
@@ -195,8 +201,17 @@ export const tugas = pgTable(
     starterCode: text("starter_code").notNull().default(""),
     /** Output yang diharapkan untuk auto-grade; kosong = nilai manual. */
     expectedOutput: text("expected_output").notNull().default(""),
+    /** Kunci jawaban berupa kode, hanya ditampilkan ke guru. */
+    solutionCode: text("solution_code").notNull().default(""),
     maxScore: integer("max_score").notNull().default(100),
     maxAttempts: integer("max_attempts").notNull().default(3),
+    /** KKM; null = tanpa ambang kelulusan. */
+    minScore: integer("min_score"),
+    /** Jika true, percobaan tidak dibatasi sampai nilai >= minScore. */
+    repeatUntilPass: boolean("repeat_until_pass").notNull().default(false),
+    /** Aturan struktur AST + bobotnya. */
+    structureRules: jsonb("structure_rules").$type<TugasStructureRules | null>(),
+    structureWeight: integer("structure_weight").notNull().default(40),
     dueAt: timestamp("due_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -244,6 +259,11 @@ export const tugasSubmissions = pgTable(
     status: varchar("status", { length: 20 }).notNull().default("success"),
     /** null = belum dinilai (mis. expected output kosong). */
     score: integer("score"),
+    outputScore: integer("output_score"),
+    structureScore: integer("structure_score"),
+    passed: boolean("passed"),
+    metrics: jsonb("metrics").$type<TugasMetrics | null>(),
+    checks: jsonb("checks").$type<TugasCheck[] | null>(),
     feedback: text("feedback"),
     submittedAt: timestamp("submitted_at", { withTimezone: true })
       .notNull()

@@ -1,0 +1,1 @@
+ALTER TABLE "tugas" ADD COLUMN "solution_code" text DEFAULT '' NOT NULL;

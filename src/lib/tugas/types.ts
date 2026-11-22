@@ -3,6 +3,11 @@ import type {
   TugasJenis,
   TugasTargetType,
 } from "@/lib/db/schema";
+import type {
+  TugasCheck,
+  TugasMetrics,
+  TugasStructureRules,
+} from "@/lib/tugas/rules";
 
 export type TugasView = {
   id: number;
@@ -15,8 +20,13 @@ export type TugasView = {
   targetCount: number;
   starterCode: string;
   expectedOutput: string;
+  solutionCode: string;
   maxScore: number;
   maxAttempts: number;
+  minScore: number | null;
+  repeatUntilPass: boolean;
+  structureRules: TugasStructureRules | null;
+  structureWeight: number;
   dueAt: string | null;
   createdAt: string;
   submissionCount: number;
@@ -34,6 +44,11 @@ export type TugasSubmissionView = {
   stderr: string;
   status: LabRunStatus;
   score: number | null;
+  outputScore: number | null;
+  structureScore: number | null;
+  passed: boolean | null;
+  metrics: TugasMetrics | null;
+  checks: TugasCheck[] | null;
   feedback: string | null;
   submittedAt: string;
 };
@@ -42,6 +57,39 @@ export type TugasSiswaView = TugasView & {
   attemptsUsed: number;
   attemptsLeft: number;
   bestScore: number | null;
+  passed: boolean | null;
   lastSubmittedAt: string | null;
   closed: boolean;
+};
+
+export type TugasRosterStatus =
+  | "lulus"
+  | "belum_lulus"
+  | "mengerjakan"
+  | "belum_mengerjakan";
+
+export type TugasRosterRow = {
+  userId: number;
+  name: string;
+  username: string | null;
+  kelasLabel: string | null;
+  isActive: boolean;
+  attempts: number;
+  lastScore: number | null;
+  bestScore: number | null;
+  passed: boolean | null;
+  lastSubmittedAt: string | null;
+  status: TugasRosterStatus;
+};
+
+export type TugasRoster = {
+  rows: TugasRosterRow[];
+  assignedCount: number;
+  activeCount: number;
+  passedCount: number;
+  failedCount: number;
+  workedCount: number;
+  notStartedCount: number;
+  inactiveCount: number;
+  hasKkm: boolean;
 };

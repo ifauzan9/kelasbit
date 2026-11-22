@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { AlertCircle, CheckCircle2, Plus } from "@/components/icons";
+import { AlertCircle, CheckCircle2, Plus, Sparkles } from "@/components/icons";
 import { useRefreshOnSuccess } from "@/components/guru/use-refresh-on-success";
 import {
   StudentPicker,
@@ -21,6 +21,82 @@ const inputClass =
 
 const codeClass =
   "w-full resize-y rounded-xl border border-slate-200 bg-slate-900 px-3.5 py-2.5 font-mono text-xs leading-relaxed text-slate-100 shadow-sm outline-none transition placeholder:text-slate-500 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-900/40";
+
+const LAB_PRESET = {
+  title: "Remedial: Bukti Peminjaman Alat Laboratorium",
+  description: `Buatlah program Python untuk mencetak bukti peminjaman alat laboratorium sekolah.
+
+Program meminta tiga data secara berurutan menggunakan input():
+1. Nama peminjam
+2. Kelas
+3. Nama alat
+
+Tentukan dua data tetap langsung di dalam kode (bukan input):
+lokasi = "Laboratorium Komputer"
+tanggal = "28 November 2026"
+Gunakan variabel lokasi dan tanggal di print(), jangan tulis nilainya langsung.
+Cetak nilai dengan pemisah koma, misalnya print("Nama :", nama).
+
+Gunakan contoh input berikut agar output sesuai target:
+Dimas
+IX B
+Mikroskop
+
+Ketentuan:
+- Minimal 5 variabel: nama, kelas, alat, lokasi, tanggal.
+- Tepat 3 input().
+- Variabel nama, kelas, dan alat harus dibuat dari input() dan dipakai di dalam print(). Jangan menulis nilai input langsung sebagai teks.
+- Minimal 14 print() dan 14 baris output tidak kosong.
+- Tampilkan judul BUKTI PEMINJAMAN ALAT LABORATORIUM, garis pembatas, tata tertib 3 poin, dan pesan penutup.
+- Dilarang menggunakan for, while, if, atau else.`,
+  starterCode: `# Lengkapi program bukti peminjaman alat laboratorium.
+`,
+  expectedOutput: `========================================
+   BUKTI PEMINJAMAN ALAT LABORATORIUM
+========================================
+Nama       : Dimas
+Kelas      : IX B
+Alat       : Mikroskop
+Lokasi     : Laboratorium Komputer
+Tanggal    : 28 November 2026
+----------------------------------------
+         TATA TERTIB PEMINJAMAN
+----------------------------------------
+1. Gunakan alat sesuai petunjuk guru.
+2. Jangan memindahkan alat tanpa izin.
+3. Kembalikan alat tepat waktu.
+----------------------------------------
+Simpan bukti ini sebagai tanda peminjaman.
+========================================`,
+  solutionCode: `nama = input()
+kelas = input()
+alat = input()
+
+lokasi = "Laboratorium Komputer"
+tanggal = "28 November 2026"
+
+print("=" * 40)
+print("   BUKTI PEMINJAMAN ALAT LABORATORIUM")
+print("=" * 40)
+print("Nama       :", nama)
+print("Kelas      :", kelas)
+print("Alat       :", alat)
+print("Lokasi     :", lokasi)
+print("Tanggal    :", tanggal)
+print("-" * 40)
+print("         TATA TERTIB PEMINJAMAN")
+print("-" * 40)
+print("1. Gunakan alat sesuai petunjuk guru.")
+print("2. Jangan memindahkan alat tanpa izin.")
+print("3. Kembalikan alat tepat waktu.")
+print("-" * 40)
+print("Simpan bukti ini sebagai tanda peminjaman.")
+print("=" * 40)
+`,
+  requiredVariables: "nama, kelas, alat, lokasi, tanggal",
+  inputVariables: "nama, kelas, alat",
+  literalVariables: "lokasi, tanggal",
+};
 
 export function TugasForm({
   kelasOptions,
@@ -51,6 +127,59 @@ export function TugasForm({
     setTargetUserIds([]);
   }, [state.stamp, state.success]);
 
+  function applyPreset() {
+    const form = formRef.current;
+    if (!form) return;
+
+    const set = (name: string, value: string) => {
+      const field = form.querySelector<
+        HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+      >(`[name="${name}"]`);
+      if (!field) return;
+      field.value = value;
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+
+    const check = (name: string, checked: boolean) => {
+      const field = form.querySelector<HTMLInputElement>(
+        `[name="${name}"]`,
+      );
+      if (!field) return;
+      field.checked = checked;
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+
+    set("title", LAB_PRESET.title);
+    set("jenis", "remedial");
+    set("kelasId", "");
+    set("dueAt", "");
+    set("maxScore", "100");
+    set("maxAttempts", "3");
+    set("minScore", "75");
+    set("description", LAB_PRESET.description);
+    set("starterCode", LAB_PRESET.starterCode);
+    set("expectedOutput", LAB_PRESET.expectedOutput);
+    set("solutionCode", LAB_PRESET.solutionCode);
+    set("structureWeight", "40");
+    set("exactInputs", "3");
+    set("minPrints", "14");
+    set("minOutputLines", "14");
+    set("requiredVariables", LAB_PRESET.requiredVariables);
+    set("inputVariables", LAB_PRESET.inputVariables);
+    set("literalVariables", LAB_PRESET.literalVariables);
+
+    check("repeatUntilPass", true);
+    check("structureEnabled", true);
+    check("forbidLoops", true);
+    check("forbidConditionals", true);
+
+    setTargetType("siswa");
+    setTargetUserIds([]);
+    setShowAdvanced(true);
+  }
+
   return (
     <form
       ref={formRef}
@@ -70,6 +199,15 @@ export function TugasForm({
           </p>
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={applyPreset}
+        className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-700 transition-colors hover:bg-emerald-100"
+      >
+        <Sparkles className="h-3.5 w-3.5" />
+        Preset: Bukti Peminjaman Alat
+      </button>
 
       <div className="mt-5 space-y-4">
         <label className="block space-y-1.5">
@@ -215,6 +353,37 @@ export function TugasForm({
           </label>
         </div>
 
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block space-y-1.5">
+            <span className="block text-xs font-bold text-slate-600">
+              KKM / nilai minimal lulus
+            </span>
+            <input
+              type="number"
+              name="minScore"
+              min={0}
+              max={1000}
+              placeholder="Contoh: 75"
+              className={inputClass}
+            />
+          </label>
+
+          <label className="flex cursor-pointer items-end gap-2 pb-2">
+            <input
+              type="checkbox"
+              name="repeatUntilPass"
+              value="true"
+              className="mb-1 h-4 w-4 accent-emerald-600"
+            />
+            <span className="text-xs font-semibold text-slate-600">
+              Ulangi sampai lulus
+              <span className="mt-0.5 block text-[10px] font-medium text-slate-400">
+                Percobaan tidak dibatasi sampai nilai ≥ KKM
+              </span>
+            </span>
+          </label>
+        </div>
+
         <label className="block space-y-1.5">
           <span className="block text-xs font-bold text-slate-600">
             Instruksi / soal
@@ -268,6 +437,164 @@ export function TugasForm({
               manual.
             </span>
           </label>
+
+          <label className="block space-y-1.5">
+            <span className="block text-xs font-bold text-slate-600">
+              Kunci jawaban (kode)
+            </span>
+            <textarea
+              name="solutionCode"
+              rows={8}
+              spellCheck={false}
+              placeholder={"# Tulis jawaban benar di sini (hanya untuk guru)\n"}
+              className={codeClass}
+            />
+            <span className="block text-[10px] leading-relaxed text-slate-400">
+              Hanya ditampilkan di akun guru, tidak dikirim ke halaman siswa.
+            </span>
+          </label>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                name="structureEnabled"
+                value="true"
+                className="h-4 w-4 accent-emerald-600"
+              />
+              <span className="text-xs font-extrabold text-slate-700">
+                Aktifkan pemeriksaan struktur
+              </span>
+            </label>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="block space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Bobot struktur (%)
+                </span>
+                <input
+                  type="number"
+                  name="structureWeight"
+                  min={0}
+                  max={100}
+                  defaultValue={40}
+                  className={inputClass}
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Tepat jumlah input()
+                </span>
+                <input
+                  type="number"
+                  name="exactInputs"
+                  min={0}
+                  max={1000}
+                  placeholder="mis. 3"
+                  className={inputClass}
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Minimal print()
+                </span>
+                <input
+                  type="number"
+                  name="minPrints"
+                  min={0}
+                  max={1000}
+                  placeholder="mis. 14"
+                  className={inputClass}
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Minimal baris output
+                </span>
+                <input
+                  type="number"
+                  name="minOutputLines"
+                  min={0}
+                  max={1000}
+                  placeholder="mis. 14"
+                  className={inputClass}
+                />
+              </label>
+            </div>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="block space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Variabel wajib
+                </span>
+                <input
+                  type="text"
+                  name="requiredVariables"
+                  placeholder="nama, kelas, alat, lokasi, tanggal"
+                  className={inputClass}
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Variabel nilai tetap (string)
+                </span>
+                <input
+                  type="text"
+                  name="literalVariables"
+                  placeholder="lokasi, tanggal"
+                  className={inputClass}
+                />
+                <span className="block text-[10px] leading-relaxed text-slate-400">
+                  Nilai tetap harus dipakai di <code>print()</code>, bukan
+                  ditulis langsung sebagai teks.
+                </span>
+              </label>
+            </div>
+
+            <label className="mt-3 block space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                Variabel dari input()
+              </span>
+              <input
+                type="text"
+                name="inputVariables"
+                placeholder="nama, kelas, alat"
+                className={inputClass}
+              />
+              <span className="block text-[10px] leading-relaxed text-slate-400">
+                Variabel ini wajib dibuat dari <code>input()</code> dan dipakai
+                di dalam <code>print()</code>. Nilai input tidak boleh ditulis
+                langsung sebagai teks.
+              </span>
+            </label>
+
+            <div className="mt-3 flex flex-wrap gap-4">
+              <label className="flex cursor-pointer items-center gap-2 text-[11px] font-semibold text-slate-600">
+                <input
+                  type="checkbox"
+                  name="forbidLoops"
+                  value="true"
+                  className="h-3.5 w-3.5 accent-emerald-600"
+                />
+                Larang for/while
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 text-[11px] font-semibold text-slate-600">
+                <input
+                  type="checkbox"
+                  name="forbidConditionals"
+                  value="true"
+                  className="h-3.5 w-3.5 accent-emerald-600"
+                />
+                Larang if/else
+              </label>
+            </div>
+
+            <p className="mt-2 text-[10px] leading-relaxed text-slate-400">
+              Semua aturan yang diisi bersifat <strong>wajib</strong>. Jika satu
+              aturan gagal, siswa belum lulus meskipun nilai totalnya tinggi.
+              Nama variabel harus sama persis, termasuk huruf besar/kecil.
+            </p>
+          </div>
         </div>
       </div>
 
