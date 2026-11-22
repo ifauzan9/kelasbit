@@ -642,6 +642,7 @@ export async function getTugasForSiswa(tugasId: number): Promise<{
   submissions: TugasSubmissionView[];
   latestLocation: TugasLocationView | null;
   gpsBypassActive: boolean;
+  userId: number;
 } | null> {
   const user = await requireUser("siswa");
   const kelasId = await siswaKelasId(user.id);
@@ -700,6 +701,7 @@ export async function getTugasForSiswa(tugasId: number): Promise<{
     ),
     latestLocation,
     gpsBypassActive,
+    userId: user.id,
   };
 }
 

@@ -966,6 +966,14 @@ npm run dev              # jalankan app
 
 ## Pelajaran teknis
 
+- **Audit data frontend (22 November 2026)**: bundle produksi tidak memuat
+  `.env`, SQL, dump, atau source map; `public/` hanya ikon dan worker Pyodide.
+  Solusi tugas asli tidak ditemukan di HTML/RSC/chunk halaman siswa (diuji
+  dengan string solusi unik). API tidak mengembalikan data sensitif dan cookie
+  sesi `httpOnly`. Draft kode di `localStorage` sekarang memakai user id dan
+  key lama global dibersihkan otomatis. Data guru (jawaban, koordinat, kode
+  pass) memang dikirim ke halaman guru dan dapat dilihat lewat DevTools jika
+  sesi guru dipakai; akses tetap dilindungi role server.
 - **Jangan pakai `login.bind(null, role)` untuk Server Action.** Versi itu membuat form
   menggantung tanpa henti (server 100% CPU, respons tidak pernah selesai) setiap kali
   login **gagal**. Solusinya: action tanpa `bind`, role dikirim lewat

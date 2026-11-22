@@ -64,7 +64,7 @@ export default async function SiswaTugasDetailPage({
   const data = await getTugasForSiswa(id);
   if (!data) notFound();
 
-  const { tugas, submissions, latestLocation, gpsBypassActive } = data;
+  const { tugas, submissions, latestLocation, gpsBypassActive, userId } = data;
   const attemptsLeft = Math.max(0, tugas.maxAttempts - submissions.length);
   const closed =
     tugas.dueAt !== null && new Date(tugas.dueAt).getTime() <= Date.now();
@@ -238,6 +238,7 @@ export default async function SiswaTugasDetailPage({
             closed={closed}
             expectedOutput={tugas.expectedOutput}
             blockCopyPaste={tugas.blockCopyPaste}
+            draftOwnerId={userId}
           />
         </div>
       ) : passed === true ? null : (

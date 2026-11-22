@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { CodeXml, Sparkles, Terminal } from "@/components/icons";
 import { LabWorkspace } from "@/components/lab/lab-workspace";
+import { requireUser } from "@/lib/auth/session";
 import { listLabRuns } from "@/lib/lab/queries";
 
 export const metadata: Metadata = {
@@ -8,6 +9,7 @@ export const metadata: Metadata = {
 };
 
 export default async function LabCodingPage() {
+  const user = await requireUser("siswa");
   const runs = await listLabRuns(20);
 
   return (
@@ -57,7 +59,7 @@ export default async function LabCodingPage() {
       </section>
 
       <div className="mt-6">
-        <LabWorkspace initialRuns={runs} />
+        <LabWorkspace initialRuns={runs} draftOwnerId={user.id} />
       </div>
     </>
   );

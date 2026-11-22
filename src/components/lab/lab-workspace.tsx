@@ -36,7 +36,7 @@ const PythonEditor = dynamic(
 
 const RUN_TIMEOUT_MS = 5000;
 const MAX_OUTPUT = 20_000;
-const DRAFT_KEY = "kelasbit:lab:draft";
+const LEGACY_DRAFT_KEY = "kelasbit:lab:draft";
 const HISTORY_LIMIT = 20;
 
 type RuntimeState = "booting" | "ready" | "error";
@@ -72,7 +72,14 @@ const RUNTIME_CLASS: Record<RuntimeState, string> = {
   error: "bg-rose-50 text-rose-700 ring-rose-200",
 };
 
-export function LabWorkspace({ initialRuns }: { initialRuns: LabRunView[] }) {
+export function LabWorkspace({
+  initialRuns,
+  draftOwnerId,
+}: {
+  initialRuns: LabRunView[];
+  draftOwnerId: number;
+}) {
+  const draftKey = `kelasbit:lab:${draftOwnerId}:draft`;
   const [code, setCode] = useState(DEFAULT_LAB_CODE);
   const [stdout, setStdout] = useState("");
   const [stderr, setStderr] = useState("");
@@ -327,7 +334,9 @@ export function LabWorkspace({ initialRuns }: { initialRuns: LabRunView[] }) {
 
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(DRAFT_KEY);
+      // Bersihkan draft lama yang belum dipisah per siswa.
+      window.localStorage.removeItem(LEGACY_DRAFT_KEY);
+      const raw = window.localStorage.getItem(draftKey);
       if (raw) {
         const draft = JSON.parse(raw) as { code?: unknown };
         if (typeof draft.code === "string" && draft.code.trim()) {
@@ -339,17 +348,17 @@ export function LabWorkspace({ initialRuns }: { initialRuns: LabRunView[] }) {
     }
 
     draftLoadedRef.current = true;
-  }, []);
+  }, [draftKey]);
 
   useEffect(() => {
     if (!draftLoadedRef.current) return;
 
     try {
-      window.localStorage.setItem(DRAFT_KEY, JSON.stringify({ code }));
+      window.localStorage.setItem(draftKey, JSON.stringify({ code }));
     } catch {
       // localStorage penuh/diblokir: draft tidak disimpan.
     }
-  }, [code]);
+  }, [code, draftKey]);
 
   useEffect(() => {
     createWorker();

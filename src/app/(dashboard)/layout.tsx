@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { DraftStorageCleanup } from "@/components/dashboard/draft-storage-cleanup";
 import { MaintenanceScheduleNotice } from "@/components/maintenance-schedule-notice";
 import { requireUser } from "@/lib/auth/session";
 import { getMaintenanceSetting } from "@/lib/settings/maintenance";
@@ -30,6 +31,7 @@ export default async function DashboardLayout({
 
   return (
     <DashboardShell user={user}>
+      <DraftStorageCleanup />
       <MaintenanceScheduleNotice setting={maintenance} className="mb-5" />
       {children}
     </DashboardShell>

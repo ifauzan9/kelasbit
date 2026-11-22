@@ -95,6 +95,7 @@ export function TugasWorkspace({
   initialCooldownUntil,
   expectedOutput,
   blockCopyPaste,
+  draftOwnerId,
 }: {
   tugasId: number;
   starterCode: string;
@@ -107,9 +108,10 @@ export function TugasWorkspace({
   initialCooldownUntil: string | null;
   expectedOutput: string;
   blockCopyPaste: boolean;
+  draftOwnerId: number;
 }) {
   const router = useRouter();
-  const draftKey = `kelasbit:tugas:${tugasId}:draft`;
+  const draftKey = `kelasbit:tugas:${draftOwnerId}:${tugasId}:draft`;
 
   const [code, setCode] = useState(starterCode.trim() || DEFAULT_CODE);
   const [stdout, setStdout] = useState("");
@@ -236,6 +238,8 @@ export function TugasWorkspace({
 
   useEffect(() => {
     try {
+      // Bersihkan draft lama yang belum dipisah per siswa.
+      window.localStorage.removeItem(`kelasbit:tugas:${tugasId}:draft`);
       const raw = window.localStorage.getItem(draftKey);
       if (raw) {
         const draft = JSON.parse(raw) as { code?: unknown };
@@ -247,7 +251,7 @@ export function TugasWorkspace({
       // abaikan draft rusak
     }
     draftLoadedRef.current = true;
-  }, [draftKey]);
+  }, [draftKey, tugasId]);
 
   useEffect(() => {
     if (!draftLoadedRef.current) return;
