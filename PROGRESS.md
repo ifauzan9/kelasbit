@@ -645,9 +645,11 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   - **Kunci copy/paste** per tugas (migration additif
     `0016_yummy_shatterstar.sql`, default nonaktif):
     - checkbox saat membuat tugas + toggle **Aktif/Nonaktif** di detail tugas;
-    - student editor memblokir copy, cut, paste, drag-drop, dan context menu;
-    - event `beforeinput` mobile (`insertFromPaste`/`insertFromDrop`/cut)
-      ikut diblokir, jadi paste dari keyboard HP/long-press tidak masuk;
+    - student editor memblokir copy, cut, paste, drag-drop, context menu, dan
+      event `beforeinput` mobile (paste/drop/cut);
+    - heuristik keyboard mobile: insert teks >2 karakter atau multiline tanpa
+      keydown dalam 800 ms dianggap paste dan diblokir;
+    - atribut autocomplete/autocorrect/spellcheck/Grammarly dimatikan;
     - badge dan peringatan tampil di editor;
     - input prompt `input()` tetap boleh paste karena bukan editor kode.
   - **Tutup tugas manual** (migration additif
@@ -672,6 +674,8 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
       **Di luar batas >500 m** (ditolak);
     - guru melihat lokasi terakhir di roster/modal tugas dan riwayat lengkap
       di halaman detail siswa `/guru/siswa/<id>`;
+    - gate GPS responsif di HP, menampilkan status izin browser dan panduan
+      reset izin per Chrome Android, Safari iPhone, Chrome/Edge, dan Firefox;
     - reset pekerjaan menghapus riwayat lokasi siswa untuk tugas tersebut.
   - **Kode pass GPS** (migration additif
     `0019_careless_silk_fever.sql`):
@@ -770,6 +774,12 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   tidak berubah; mengetik manual tetap berjalan. Toggle guru mengubah nilai DB
   dan halaman siswa setelah refresh; saat nonaktif event copy kembali normal.
   Input prompt tidak terdampak. Data uji dihapus.
+- Status uji heuristik paste mobile (22 November 2026):
+  - `beforeinput insertText` teks panjang tanpa keydown diblokir dan isi
+    editor tidak berubah;
+  - insert satu karakter tetap diizinkan;
+  - atribut autocomplete/autocorrect/spellcheck/Grammarly aktif;
+  - data uji dihapus.
 - Status uji tutup tugas manual (22 November 2026): switch guru
   `Dibuka → Ditutup` mengubah DB; kartu siswa tetap tampil dengan status
   **Ditutup** tanpa link/CTA aktif; URL detail langsung menghasilkan **404**;
@@ -791,6 +801,10 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   - siswa memasukkan kode → halaman tugas terbuka tanpa GPS;
   - guru menonaktifkan kode → reload siswa menampilkan gate lagi;
   - data uji, lokasi, dan kode pass dihapus.
+- Status uji mobile GPS (22 November 2026): viewport **390 px** tanpa scroll
+  horizontal; tombol GPS dan input kode full-width; status izin browser tampil;
+  panel **“GPS tidak akurat atau ingin reset izin?”** berisi panduan Chrome
+  Android, Safari iPhone, Chrome/Edge desktop, dan Firefox. Data uji dihapus.
 - Status uji export Excel (22 November 2026): route guru menghasilkan
   `progres-tugas-<id>.xlsx` (200) dengan sheet `Progres Tugas`, ringkasan
   target/KKM, serta baris lulus, belum lulus, dan belum mengerjakan; tanpa

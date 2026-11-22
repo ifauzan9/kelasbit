@@ -32,6 +32,7 @@ export function PythonEditor({
   const onRunRef = useRef(onRun);
   const blockCopyPasteRef = useRef(blockCopyPaste);
   const onBlockedRef = useRef(onBlocked);
+  const lastKeyAtRef = useRef(0);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -53,33 +54,74 @@ export function PythonEditor({
           indentUnit.of("    "),
           EditorView.contentAttributes.of({
             "aria-label": "Editor kode Python",
+            autocomplete: "off",
             autocorrect: "off",
             autocapitalize: "off",
             spellcheck: "false",
+            "data-gramm": "false",
+            "data-gramm_editor": "false",
+            "data-enable-grammarly": "false",
             ...(initialBlockCopyPasteRef.current
               ? { "data-copy-lock": "true" }
               : {}),
           }),
           EditorView.domEventHandlers({
+            keydown: (event) => {
+              if (!blockCopyPasteRef.current) return false;
+              if (
+                event.key.length === 1 ||
+                event.key === "Backspace" ||
+                event.key === "Delete" ||
+                event.key === "Enter" ||
+                event.key === "Tab"
+              ) {
+                lastKeyAtRef.current = performance.now();
+              }
+              return false;
+            },
             beforeinput: (event) => {
               if (!blockCopyPasteRef.current) return false;
-              const inputType =
-                "inputType" in event
-                  ? String((event as InputEvent).inputType ?? "")
-                  : "";
+              const inputEvent = event as InputEvent;
+              const inputType = String(inputEvent.inputType ?? "");
               if (
                 inputType === "insertFromPaste" ||
                 inputType === "insertFromDrop" ||
                 inputType === "insertFromYank" ||
+                inputType === "insertReplacementText" ||
                 inputType === "deleteByCut" ||
                 inputType === "deleteByDrag"
               ) {
                 event.preventDefault();
                 onBlockedRef.current?.(
-                  inputType.includes("Cut") ? "cut" : "paste",
+                  inputType.includes("Cut") || inputType.includes("Drag")
+                    ? "cut"
+                    : "paste",
                 );
                 return true;
               }
+
+              // Keyboard HP kadang menyisipkan clipboard sebagai insertText,
+              // bukan paste. Blokir insert multi-karakter tanpa keydown baru.
+              if (
+                (inputType === "insertText" ||
+                  inputType === "insertCompositionText") &&
+                typeof inputEvent.data === "string"
+              ) {
+                const inserted = inputEvent.data;
+                const looksLikeBulkInsert =
+                  inserted.includes("\n") ||
+                  inserted.includes("\r") ||
+                  inserted.length > 2;
+                const noRecentKeydown =
+                  performance.now() - lastKeyAtRef.current > 800;
+
+                if (looksLikeBulkInsert && noRecentKeydown) {
+                  event.preventDefault();
+                  onBlockedRef.current?.("paste");
+                  return true;
+                }
+              }
+
               return false;
             },
             paste: (event) => {

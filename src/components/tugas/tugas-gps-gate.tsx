@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, MapPin, ShieldCheck } from "@/components/icons";
 import type { LoginLocationStatus } from "@/lib/auth/geolocation";
@@ -13,6 +13,7 @@ import {
 } from "@/lib/tugas/location";
 
 type Phase = "idle" | "locating" | "saving" | "error";
+type PermissionState = "unknown" | "prompt" | "granted" | "denied" | "unsupported";
 
 function getPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
@@ -37,6 +38,35 @@ export function TugasGpsGate({
   const [code, setCode] = useState("");
   const [codeBusy, setCodeBusy] = useState(false);
   const [codeMessage, setCodeMessage] = useState<string | null>(null);
+  const [permissionState, setPermissionState] =
+    useState<PermissionState>("unknown");
+
+  useEffect(() => {
+    if (!navigator.permissions?.query) {
+      setPermissionState("unsupported");
+      return;
+    }
+
+    let status: PermissionStatus | null = null;
+
+    const update = () => {
+      if (!status) return;
+      setPermissionState(status.state as PermissionState);
+    };
+
+    navigator.permissions
+      .query({ name: "geolocation" as PermissionName })
+      .then((result) => {
+        status = result;
+        update();
+        status.onchange = update;
+      })
+      .catch(() => setPermissionState("unsupported"));
+
+    return () => {
+      if (status) status.onchange = null;
+    };
+  }, []);
 
   async function saveLocation(location: {
     status: LoginLocationStatus;
@@ -208,32 +238,50 @@ export function TugasGpsGate({
 
   return (
     <section className="mt-6 overflow-hidden rounded-3xl border border-emerald-200 bg-white shadow-[0_1px_2px_rgba(16,12,40,0.04)]">
-      <div className="border-b border-emerald-100 bg-emerald-50 px-5 py-4">
-        <div className="flex items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-600 ring-1 ring-emerald-100">
+      <div className="border-b border-emerald-100 bg-emerald-50 px-4 py-4 sm:px-5 sm:py-5">
+        <div className="flex items-start gap-2.5 sm:gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-600 ring-1 ring-emerald-100 sm:h-11 sm:w-11">
             <MapPin className="h-5 w-5" />
           </span>
-          <div>
-            <h2 className="text-lg font-extrabold tracking-tight text-emerald-950">
+          <div className="min-w-0">
+            <h2 className="break-words text-base font-extrabold tracking-tight text-emerald-950 sm:text-lg">
               Aktifkan GPS untuk membuka tugas
             </h2>
-            <p className="mt-1 text-xs leading-relaxed text-emerald-800/70">
+            <p className="mt-1 break-words text-[11px] leading-relaxed text-emerald-800/70 sm:text-xs">
               {tugasTitle}
             </p>
           </div>
         </div>
       </div>
 
-      <div className="space-y-4 p-5">
-        <p className="text-sm leading-relaxed text-slate-600">
+      <div className="space-y-4 p-4 sm:p-5">
+        <p className="break-words text-xs leading-relaxed text-slate-600 sm:text-sm">
           Tugas ini mewajibkan lokasi GPS dengan akurasi maksimal{" "}
           <strong>{GPS_MAX_ACCURACY_METERS} meter</strong>. Sistem mengambil
           hingga {GPS_SAMPLE_COUNT} sampel dan memakai akurasi terbaik. Lokasi
           berlaku selama <strong>1 jam</strong>.
         </p>
 
+        {permissionState !== "unsupported" && permissionState !== "unknown" ? (
+          <p
+            className={`rounded-xl px-3.5 py-2.5 text-[11px] font-semibold ${
+              permissionState === "denied"
+                ? "border border-rose-200 bg-rose-50 text-rose-700"
+                : permissionState === "granted"
+                  ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border border-slate-200 bg-slate-50 text-slate-600"
+            }`}
+          >
+            {permissionState === "denied"
+              ? "Izin lokasi diblokir. Reset izin lokasi lewat pengaturan browser, lalu muat ulang halaman."
+              : permissionState === "granted"
+                ? "Izin lokasi sudah aktif. Tekan Aktifkan GPS untuk mengambil sampel terbaru."
+                : "Izin lokasi belum diberikan. Browser akan meminta izin saat tombol Aktifkan GPS ditekan."}
+          </p>
+        ) : null}
+
         <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-3.5 py-3 text-[11px] leading-relaxed text-emerald-800">
-          <p className="flex items-start gap-2">
+          <p className="flex items-start gap-2 break-words">
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
             Jika browser menampilkan pilihan <strong>Perkiraan/Presisi</strong>,
             pilih <strong>Presisi (Precise Location)</strong>. Jika akurasi
@@ -261,7 +309,7 @@ export function TugasGpsGate({
           type="button"
           onClick={requestGps}
           disabled={busy}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <MapPin className="h-4 w-4" />
           {phase === "locating"
@@ -295,13 +343,13 @@ export function TugasGpsGate({
               placeholder="Contoh: AB12CD34"
               spellCheck={false}
               autoComplete="off"
-              className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 font-mono text-sm font-bold tracking-widest text-slate-800 outline-none transition placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+              className="h-11 w-full min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 font-mono text-sm font-bold tracking-widest text-slate-800 outline-none transition placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 sm:h-10"
             />
             <button
               type="button"
               onClick={usePass}
               disabled={codeBusy || code.trim().length < 6}
-              className="inline-flex h-10 items-center justify-center rounded-lg bg-slate-900 px-4 text-xs font-bold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-11 w-full items-center justify-center rounded-lg bg-slate-900 px-4 text-xs font-bold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-auto"
             >
               {codeBusy ? "Memeriksa…" : "Gunakan kode"}
             </button>
@@ -315,6 +363,94 @@ export function TugasGpsGate({
             </p>
           ) : null}
         </div>
+
+        <details className="rounded-xl border border-slate-200 bg-white px-3.5 py-3">
+          <summary className="cursor-pointer text-[11px] font-extrabold text-slate-700">
+            GPS tidak akurat atau ingin reset izin?
+          </summary>
+          <div className="mt-3 space-y-3 text-[11px] leading-relaxed text-slate-600">
+            <div>
+              <p className="font-extrabold text-slate-700">Chrome Android</p>
+              <ol className="mt-1 list-decimal space-y-1 pl-4">
+                <li>
+                  Ketuk ikon <strong>gembok</strong> di address bar.
+                </li>
+                <li>
+                  Pilih <strong>Izin / Permissions</strong> →{" "}
+                  <strong>Lokasi / Location</strong>.
+                </li>
+                <li>
+                  Pilih <strong>Presisi / Precise</strong>.
+                </li>
+                <li>
+                  Jika sudah ditolak: Chrome <strong>Setelan</strong> →{" "}
+                  <strong>Setelan situs</strong> → <strong>Lokasi</strong>,
+                  cari <strong>kelasbit.my.id</strong>, lalu{" "}
+                  <strong>Reset izin</strong>.
+                </li>
+              </ol>
+            </div>
+
+            <div>
+              <p className="font-extrabold text-slate-700">Safari iPhone</p>
+              <ol className="mt-1 list-decimal space-y-1 pl-4">
+                <li>
+                  <strong>Settings</strong> →{" "}
+                  <strong>Privacy &amp; Security</strong> →{" "}
+                  <strong>Location Services</strong>.
+                </li>
+                <li>
+                  Pilih <strong>Safari Websites</strong>.
+                </li>
+                <li>
+                  Pilih <strong>While Using the App</strong> dan aktifkan{" "}
+                  <strong>Precise Location</strong>.
+                </li>
+                <li>Tutup tab tugas, lalu buka kembali.</li>
+              </ol>
+            </div>
+
+            <div>
+              <p className="font-extrabold text-slate-700">
+                Chrome / Edge desktop
+              </p>
+              <ol className="mt-1 list-decimal space-y-1 pl-4">
+                <li>
+                  Klik ikon <strong>gembok</strong> di address bar.
+                </li>
+                <li>
+                  Pilih <strong>Site settings</strong> →{" "}
+                  <strong>Location</strong>.
+                </li>
+                <li>
+                  Pilih <strong>Allow</strong> dan aktifkan{" "}
+                  <strong>Precise location</strong> jika tersedia.
+                </li>
+                <li>
+                  Alternatif: buka <strong>chrome://settings/content/location</strong>,
+                  cari situs, lalu <strong>Reset permission</strong>.
+                </li>
+              </ol>
+            </div>
+
+            <div>
+              <p className="font-extrabold text-slate-700">Firefox</p>
+              <ol className="mt-1 list-decimal space-y-1 pl-4">
+                <li>Klik ikon gembok di address bar.</li>
+                <li>
+                  Pilih <strong>Clear permission</strong> /{" "}
+                  <strong>Reset permission</strong>.
+                </li>
+                <li>Muat ulang halaman dan izinkan lokasi.</li>
+              </ol>
+            </div>
+
+            <p className="rounded-lg bg-slate-50 px-2.5 py-2 text-[10px] text-slate-500 ring-1 ring-slate-100">
+              Reset izin lokasi tidak menghapus jawaban atau nilai tugas. Jika
+              GPS tetap tidak bisa, gunakan kode pass dari guru.
+            </p>
+          </div>
+        </details>
       </div>
     </section>
   );
