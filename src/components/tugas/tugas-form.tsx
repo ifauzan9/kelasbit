@@ -384,6 +384,39 @@ export function TugasForm({
           </label>
         </div>
 
+        <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+          <input
+            type="checkbox"
+            name="blockCopyPaste"
+            value="true"
+            className="mt-0.5 h-4 w-4 accent-emerald-600"
+          />
+          <span className="text-xs font-semibold text-slate-600">
+            Kunci copy/paste di editor
+            <span className="mt-0.5 block text-[10px] font-medium leading-relaxed text-slate-400">
+              Nonaktifkan copy, cut, paste, dan drag-drop kode saat siswa
+              mengerjakan tugas, termasuk di HP.
+            </span>
+          </span>
+        </label>
+
+        <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+          <input
+            type="checkbox"
+            name="requireGps"
+            value="true"
+            defaultChecked
+            className="mt-0.5 h-4 w-4 accent-emerald-600"
+          />
+          <span className="text-xs font-semibold text-slate-600">
+            Wajibkan GPS untuk membuka tugas
+            <span className="mt-0.5 block text-[10px] font-medium leading-relaxed text-slate-400">
+              Siswa harus memberi izin lokasi untuk masuk halaman tugas.
+              Lokasi valid 1 jam dan tersimpan di riwayat.
+            </span>
+          </span>
+        </label>
+
         <label className="block space-y-1.5">
           <span className="block text-xs font-bold text-slate-600">
             Instruksi / soal

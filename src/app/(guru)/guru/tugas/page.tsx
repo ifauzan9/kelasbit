@@ -4,6 +4,7 @@ import {
   CalendarDays,
   ClipboardList,
   GraduationCap,
+  MapPin,
   Sparkles,
 } from "@/components/icons";
 import { DeleteTugasButton } from "@/components/tugas/delete-tugas-button";
@@ -127,6 +128,17 @@ export default async function GuruTugasPage() {
                         >
                           {JENIS_LABEL[item.jenis]}
                         </span>
+                        {item.manuallyClosed ? (
+                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100">
+                            Ditutup
+                          </span>
+                        ) : null}
+                        {item.requireGps ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-sky-700 ring-1 ring-sky-100">
+                            <MapPin className="h-2.5 w-2.5" />
+                            GPS wajib
+                          </span>
+                        ) : null}
                         <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500">
                           <GraduationCap className="h-3 w-3 text-slate-400" />
                           {item.targetType === "semua"

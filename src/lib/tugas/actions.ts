@@ -1,11 +1,12 @@
 "use server";
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import {
   kelas,
   tugas,
+  tugasLocations,
   tugasSubmissions,
   tugasTargets,
   users,
@@ -26,6 +27,7 @@ import { parseJakartaDateTime } from "@/lib/settings/maintenance";
 
 const MAX_CODE = 50_000;
 const MAX_OUTPUT = 20_000;
+const GPS_VALIDITY_MS = 60 * 60 * 1000;
 const JENIS: TugasJenis[] = ["tugas", "ulangan", "remedial"];
 const TARGET_TYPES: TugasTargetType[] = ["semua", "kelas", "siswa"];
 const STATUSES: LabRunStatus[] = ["success", "error", "timeout", "stopped"];
@@ -105,6 +107,8 @@ export async function createTugas(
   const maxAttempts = Number(formData.get("maxAttempts") ?? 3);
   const minScoreRaw = String(formData.get("minScore") ?? "").trim();
   const repeatUntilPass = formData.get("repeatUntilPass") === "true";
+  const blockCopyPaste = formData.get("blockCopyPaste") === "true";
+  const requireGps = formData.get("requireGps") === "true";
   const structureEnabled = formData.get("structureEnabled") === "true";
   const structureWeight = Number(
     formData.get("structureWeight") ?? DEFAULT_STRUCTURE_WEIGHT,
@@ -284,6 +288,8 @@ export async function createTugas(
           repeatUntilPass,
           structureRules,
           structureWeight,
+          blockCopyPaste,
+          requireGps,
           dueAt,
         })
         .returning({ id: tugas.id });
@@ -374,6 +380,40 @@ export async function submitTugas(
     .limit(1);
 
   if (!assignment) return { ok: false, error: "Tugas tidak ditemukan." };
+
+  if (assignment.manuallyClosed) {
+    return {
+      ok: false,
+      error: "Tugas sudah ditutup oleh guru.",
+    };
+  }
+
+  if (assignment.requireGps) {
+    const [location] = await getDb()
+      .select({ id: tugasLocations.id })
+      .from(tugasLocations)
+      .where(
+        and(
+          eq(tugasLocations.tugasId, assignment.id),
+          eq(tugasLocations.userId, user.id),
+          eq(tugasLocations.status, "tersedia"),
+          gte(
+            tugasLocations.capturedAt,
+            new Date(Date.now() - GPS_VALIDITY_MS),
+          ),
+        ),
+      )
+      .orderBy(desc(tugasLocations.capturedAt))
+      .limit(1);
+
+    if (!location) {
+      return {
+        ok: false,
+        error:
+          "Lokasi GPS tidak valid. Aktifkan GPS lagi sebelum mengumpulkan tugas.",
+      };
+    }
+  }
 
   const [student] = await getDb()
     .select({ kelasId: users.kelasId })
@@ -636,8 +676,7 @@ export type ResetTugasSubmissionResult = {
 export async function resetTugasSubmission(input: {
   tugasId: number;
   userId: number;
-}): Promise<ResetTugasSubmissionResult> {
-  await requireUser("guru");
+}): Promise<ResetTugasSubmissionResult> {  await requireUser("guru");
 
   if (
     !Number.isInteger(input.tugasId) ||
@@ -679,9 +718,129 @@ export async function resetTugasSubmission(input: {
       return { ok: false, error: "Belum ada pekerjaan untuk direset." };
     }
 
+    await getDb()
+      .delete(tugasLocations)
+      .where(
+        and(
+          eq(tugasLocations.tugasId, input.tugasId),
+          eq(tugasLocations.userId, input.userId),
+        ),
+      );
+
     return { ok: true, deleted: deleted.length };
   } catch (error) {
     console.error("tugas: gagal mereset pekerjaan siswa", error);
     return { ok: false, error: "Gagal mereset pekerjaan. Coba lagi." };
+  }
+}
+
+export type TugasCopyPasteResult = {
+  ok: boolean;
+  error?: string;
+};
+
+/** Aktif/nonaktifkan penguncian copy/paste untuk satu tugas. */
+export async function setTugasBlockCopyPaste(input: {
+  tugasId: number;
+  enabled: boolean;
+}): Promise<TugasCopyPasteResult> {
+  await requireUser("guru");
+
+  if (!Number.isInteger(input.tugasId) || input.tugasId <= 0) {
+    return { ok: false, error: "Tugas tidak valid." };
+  }
+
+  try {
+    const updated = await getDb()
+      .update(tugas)
+      .set({
+        blockCopyPaste: input.enabled === true,
+        updatedAt: new Date(),
+      })
+      .where(eq(tugas.id, input.tugasId))
+      .returning({ id: tugas.id });
+
+    if (updated.length === 0) {
+      return { ok: false, error: "Tugas tidak ditemukan." };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error("tugas: gagal mengubah kunci copy/paste", error);
+    return { ok: false, error: "Gagal menyimpan pengaturan. Coba lagi." };
+  }
+}
+
+export type TugasClosedResult = {
+  ok: boolean;
+  error?: string;
+};
+
+/** Tutup/buka akses tugas secara manual untuk semua siswa. */
+export async function setTugasManuallyClosed(input: {
+  tugasId: number;
+  closed: boolean;
+}): Promise<TugasClosedResult> {
+  await requireUser("guru");
+
+  if (!Number.isInteger(input.tugasId) || input.tugasId <= 0) {
+    return { ok: false, error: "Tugas tidak valid." };
+  }
+
+  try {
+    const updated = await getDb()
+      .update(tugas)
+      .set({
+        manuallyClosed: input.closed === true,
+        updatedAt: new Date(),
+      })
+      .where(eq(tugas.id, input.tugasId))
+      .returning({ id: tugas.id });
+
+    if (updated.length === 0) {
+      return { ok: false, error: "Tugas tidak ditemukan." };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error("tugas: gagal mengubah status tutup", error);
+    return { ok: false, error: "Gagal menyimpan pengaturan. Coba lagi." };
+  }
+}
+
+export type TugasGpsResult = {
+  ok: boolean;
+  error?: string;
+};
+
+/** Wajibkan/tidak wajibkan GPS untuk masuk dan mengerjakan tugas. */
+export async function setTugasRequireGps(input: {
+  tugasId: number;
+  enabled: boolean;
+}): Promise<TugasGpsResult> {
+  await requireUser("guru");
+
+  if (!Number.isInteger(input.tugasId) || input.tugasId <= 0) {
+    return { ok: false, error: "Tugas tidak valid." };
+  }
+
+  try {
+    const updated = await getDb()
+      .update(tugas)
+      .set({
+        requireGps: input.enabled === true,
+        updatedAt: new Date(),
+      })
+      .where(eq(tugas.id, input.tugasId))
+      .returning({ id: tugas.id });
+
+    if (updated.length === 0) {
+      return { ok: false, error: "Tugas tidak ditemukan." };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error("tugas: gagal mengubah kewajiban GPS", error);
+    return { ok: false, error: "Gagal menyimpan pengaturan. Coba lagi." };
   }
 }

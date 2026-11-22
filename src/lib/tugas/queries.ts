@@ -1,9 +1,10 @@
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { getDb } from "@/lib/db";
 import {
   kelas,
   tugas,
+  tugasLocations,
   tugasSubmissions,
   tugasTargets,
   users,
@@ -12,6 +13,7 @@ import {
   type TugasTargetType,
 } from "@/lib/db/schema";
 import type {
+  TugasLocationView,
   TugasRoster,
   TugasRosterRow,
   TugasSiswaView,
@@ -37,6 +39,9 @@ type TugasRow = {
   repeatUntilPass: boolean;
   structureRules: TugasStructureRules | null;
   structureWeight: number;
+  blockCopyPaste: boolean;
+  manuallyClosed: boolean;
+  requireGps: boolean;
   dueAt: Date | null;
   createdAt: Date;
   kelasName: string | null;
@@ -68,6 +73,9 @@ function toView(
     repeatUntilPass: row.repeatUntilPass,
     structureRules: normalizeStructureRules(row.structureRules),
     structureWeight: row.structureWeight,
+    blockCopyPaste: row.blockCopyPaste,
+    manuallyClosed: row.manuallyClosed,
+    requireGps: row.requireGps,
     dueAt: row.dueAt ? row.dueAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     submissionCount,
@@ -90,6 +98,9 @@ const tugasSelect = {
   repeatUntilPass: tugas.repeatUntilPass,
   structureRules: tugas.structureRules,
   structureWeight: tugas.structureWeight,
+  blockCopyPaste: tugas.blockCopyPaste,
+  manuallyClosed: tugas.manuallyClosed,
+  requireGps: tugas.requireGps,
   dueAt: tugas.dueAt,
   createdAt: tugas.createdAt,
   kelasName: kelas.name,
@@ -158,6 +169,123 @@ export async function getTugasForGuru(id: number): Promise<TugasView | null> {
   const counts = await countMapFor([row.id]);
   const targetCounts = await targetCountMapFor([row.id]);
   return toView(row, counts.get(row.id) ?? 0, targetCounts.get(row.id) ?? 0);
+}
+
+function toLocationView(row: {
+  location: typeof tugasLocations.$inferSelect;
+  tugasTitle: string;
+  userName: string | null;
+}): TugasLocationView {
+  return {
+    id: row.location.id,
+    tugasId: row.location.tugasId,
+    tugasTitle: row.tugasTitle,
+    userId: row.location.userId,
+    userName: row.userName,
+    status: row.location.status as TugasLocationView["status"],
+    latitude: row.location.latitude,
+    longitude: row.location.longitude,
+    accuracy: row.location.accuracy,
+    capturedAt: row.location.capturedAt.toISOString(),
+  };
+}
+
+export async function getLatestTugasLocation(
+  tugasId: number,
+  userId: number,
+): Promise<TugasLocationView | null> {
+  const [row] = await getDb()
+    .select({
+      location: tugasLocations,
+      tugasTitle: tugas.title,
+      userName: users.name,
+    })
+    .from(tugasLocations)
+    .innerJoin(tugas, eq(tugas.id, tugasLocations.tugasId))
+    .innerJoin(users, eq(users.id, tugasLocations.userId))
+    .where(
+      and(
+        eq(tugasLocations.tugasId, tugasId),
+        eq(tugasLocations.userId, userId),
+      ),
+    )
+    .orderBy(desc(tugasLocations.capturedAt), desc(tugasLocations.id))
+    .limit(1);
+
+  return row ? toLocationView(row) : null;
+}
+
+export async function getLatestAvailableTugasLocation(
+  tugasId: number,
+  userId: number,
+  since: Date,
+): Promise<TugasLocationView | null> {
+  const [row] = await getDb()
+    .select({
+      location: tugasLocations,
+      tugasTitle: tugas.title,
+      userName: users.name,
+    })
+    .from(tugasLocations)
+    .innerJoin(tugas, eq(tugas.id, tugasLocations.tugasId))
+    .innerJoin(users, eq(users.id, tugasLocations.userId))
+    .where(
+      and(
+        eq(tugasLocations.tugasId, tugasId),
+        eq(tugasLocations.userId, userId),
+        eq(tugasLocations.status, "tersedia"),
+        gte(tugasLocations.capturedAt, since),
+      ),
+    )
+    .orderBy(desc(tugasLocations.capturedAt), desc(tugasLocations.id))
+    .limit(1);
+
+  return row ? toLocationView(row) : null;
+}
+
+async function latestLocationsForTugas(
+  tugasId: number,
+): Promise<Map<number, TugasLocationView>> {
+  const rows = await getDb()
+    .select({
+      location: tugasLocations,
+      tugasTitle: tugas.title,
+      userName: users.name,
+    })
+    .from(tugasLocations)
+    .innerJoin(tugas, eq(tugas.id, tugasLocations.tugasId))
+    .innerJoin(users, eq(users.id, tugasLocations.userId))
+    .where(eq(tugasLocations.tugasId, tugasId))
+    .orderBy(desc(tugasLocations.capturedAt), desc(tugasLocations.id));
+
+  const byUser = new Map<number, TugasLocationView>();
+  for (const row of rows) {
+    if (byUser.has(row.location.userId)) continue;
+    byUser.set(row.location.userId, toLocationView(row));
+  }
+  return byUser;
+}
+
+export async function listTugasLocationsForUser(
+  userId: number,
+  limit = 100,
+): Promise<TugasLocationView[]> {
+  await requireUser("guru");
+
+  const rows = await getDb()
+    .select({
+      location: tugasLocations,
+      tugasTitle: tugas.title,
+      userName: users.name,
+    })
+    .from(tugasLocations)
+    .innerJoin(tugas, eq(tugas.id, tugasLocations.tugasId))
+    .innerJoin(users, eq(users.id, tugasLocations.userId))
+    .where(eq(tugasLocations.userId, userId))
+    .orderBy(desc(tugasLocations.capturedAt), desc(tugasLocations.id))
+    .limit(Math.min(Math.max(limit, 1), 500));
+
+  return rows.map(toLocationView);
 }
 
 function toSubmissionView(
@@ -299,6 +427,8 @@ export async function getTugasRoster(
     byUser.set(submission.userId, list);
   }
 
+  const latestLocations = await latestLocationsForTugas(tugasId);
+
   const rows: TugasRosterRow[] = students.map((student) => {
     const mine = byUser.get(student.id) ?? [];
     const attempts = mine.length;
@@ -339,6 +469,7 @@ export async function getTugasRoster(
         ? latest.submittedAt.toISOString()
         : null,
       status,
+      latestLocation: latestLocations.get(student.id) ?? null,
     };
   });
 
@@ -445,7 +576,8 @@ export async function listTugasForSiswa(): Promise<TugasSiswaView[]> {
       passed,
       lastSubmittedAt,
       closed:
-        row.dueAt !== null && row.dueAt.getTime() <= now,
+        row.manuallyClosed ||
+        (row.dueAt !== null && row.dueAt.getTime() <= now),
     };
   });
 }
@@ -453,6 +585,7 @@ export async function listTugasForSiswa(): Promise<TugasSiswaView[]> {
 export async function getTugasForSiswa(tugasId: number): Promise<{
   tugas: TugasView;
   submissions: TugasSubmissionView[];
+  latestLocation: TugasLocationView | null;
 } | null> {
   const user = await requireUser("siswa");
   const kelasId = await siswaKelasId(user.id);
@@ -465,6 +598,7 @@ export async function getTugasForSiswa(tugasId: number): Promise<{
     .limit(1);
 
   if (!row) return null;
+  if (row.manuallyClosed) return null;
 
   const targetType = row.targetType as TugasTargetType;
   let allowed = false;
@@ -500,11 +634,14 @@ export async function getTugasForSiswa(tugasId: number): Promise<{
     )
     .orderBy(desc(tugasSubmissions.submittedAt), desc(tugasSubmissions.id));
 
+  const latestLocation = await getLatestTugasLocation(tugasId, user.id);
+
   return {
     tugas: toView(row, rows.length, 0),
     submissions: rows.map((item) =>
       toSubmissionView({ ...item, userName: user.name }),
     ),
+    latestLocation,
   };
 }
 

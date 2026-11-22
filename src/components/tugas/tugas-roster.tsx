@@ -6,13 +6,16 @@ import {
   AlertCircle,
   CheckCircle2,
   ChevronRight,
+  MapPin,
   Search,
   Users,
   X,
 } from "@/components/icons";
 import { SubmissionDetailContent } from "@/components/tugas/submission-detail";
+import { locationMapUrl } from "@/lib/auth/geolocation";
 import { resetTugasSubmission } from "@/lib/tugas/actions";
 import type {
+  TugasLocationView,
   TugasRoster,
   TugasRosterRow,
   TugasRosterStatus,
@@ -42,6 +45,56 @@ const STATUS_CLASS: Record<TugasRosterStatus, string> = {
   mengerjakan: "bg-sky-50 text-sky-700 ring-sky-100",
   belum_mengerjakan: "bg-slate-100 text-slate-600 ring-slate-200",
 };
+
+const LOCATION_LABEL: Record<string, string> = {
+  tersedia: "Tersedia",
+  ditolak: "Izin ditolak",
+  timeout: "Timeout",
+  tidak_didukung: "Tidak didukung",
+  error: "Error",
+  tidak_dicatat: "Tidak dicatat",
+  dimatikan: "Dimatikan",
+};
+
+function LocationCell({
+  location,
+}: {
+  location: TugasLocationView | null;
+}) {
+  if (!location) {
+    return <span className="text-[10px] text-slate-300">—</span>;
+  }
+
+  if (
+    location.status === "tersedia" &&
+    location.latitude !== null &&
+    location.longitude !== null
+  ) {
+    return (
+      <a
+        href={locationMapUrl(location.latitude, location.longitude)}
+        target="_blank"
+        rel="noreferrer"
+        title={
+          location.accuracy !== null
+            ? `Akurasi ±${Math.round(location.accuracy)} m`
+            : undefined
+        }
+        className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
+      >
+        <MapPin className="h-3 w-3" />
+        Lihat peta
+      </a>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+      <MapPin className="h-3 w-3 text-slate-300" />
+      {LOCATION_LABEL[location.status] ?? location.status}
+    </span>
+  );
+}
 
 type Filter =
   | "semua"
@@ -124,6 +177,10 @@ export function TugasRosterTable({
   const selectedRows = selectedUserIds.map((userId) =>
     roster.rows.find((row) => row.userId === userId),
   );
+  const selectedRow =
+    selectedUserId !== null
+      ? roster.rows.find((row) => row.userId === selectedUserId)
+      : undefined;
   const modalOpen = selectedUserId !== null || compareUserIds !== null;
 
   function toggleSelection(userId: number) {
@@ -386,6 +443,7 @@ export function TugasRosterTable({
                 <th className="px-2 py-2 text-center font-extrabold">
                   Nilai terakhir
                 </th>
+                <th className="px-2 py-2 font-extrabold">Lokasi</th>
                 <th className="px-2 py-2 font-extrabold">Status</th>
                 <th className="px-2 py-2 font-extrabold">Terakhir</th>
                 <th className="px-2 py-2 text-right font-extrabold">Aksi</th>
@@ -395,7 +453,7 @@ export function TugasRosterTable({
               {pageRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     className="px-2 py-6 text-center text-slate-400"
                   >
                     Tidak ada siswa yang cocok.
@@ -458,6 +516,9 @@ export function TugasRosterTable({
                           : row.lastScore === null
                             ? "Belum dinilai"
                             : row.lastScore}
+                      </td>
+                      <td className="px-2 py-2.5">
+                        <LocationCell location={row.latestLocation} />
                       </td>
                       <td className="px-2 py-2.5">
                         <span
@@ -584,6 +645,11 @@ export function TugasRosterTable({
                         }`}
                       >
                         {selectedSubmission.passed ? "Lulus" : "Belum lulus"}
+                      </span>
+                    ) : null}
+                    {selectedRow?.latestLocation ? (
+                      <span className="rounded-full bg-sky-50 px-2 py-0.5 ring-1 ring-sky-100">
+                        <LocationCell location={selectedRow.latestLocation} />
                       </span>
                     ) : null}
                   </div>
@@ -734,6 +800,19 @@ export function TugasRosterTable({
                             }`}
                           >
                             {submission.passed ? "Lulus" : "Belum lulus"}
+                          </span>
+                        ) : null}
+                        {roster.rows.find(
+                          (row) => row.userId === submission.userId,
+                        )?.latestLocation ? (
+                          <span className="rounded-full bg-sky-50 px-2 py-0.5 ring-1 ring-sky-100">
+                            <LocationCell
+                              location={
+                                roster.rows.find(
+                                  (row) => row.userId === submission.userId,
+                                )?.latestLocation ?? null
+                              }
+                            />
                           </span>
                         ) : null}
                       </div>

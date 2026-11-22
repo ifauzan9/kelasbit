@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useCallback, useEffect, useState, type ChangeEvent } from "react";
 import {
   AlertCircle,
@@ -166,13 +167,14 @@ export function SiswaImport() {
           </div>
         </div>
 
-        <a
+        <Link
           href="/guru/siswa/template"
+          prefetch={false}
           className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50"
         >
           <Download className="h-3.5 w-3.5" />
           Template Excel
-        </a>
+        </Link>
       </div>
 
       {error ? (

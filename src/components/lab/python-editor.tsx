@@ -13,23 +13,32 @@ export function PythonEditor({
   value,
   onChange,
   onRun,
+  blockCopyPaste = false,
+  onBlocked,
   className = "",
 }: {
   value: string;
   onChange: (value: string) => void;
   onRun: () => void;
+  blockCopyPaste?: boolean;
+  onBlocked?: (reason: "copy" | "cut" | "paste" | "drop" | "contextmenu") => void;
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const initialValueRef = useRef(value);
+  const initialBlockCopyPasteRef = useRef(blockCopyPaste);
   const onChangeRef = useRef(onChange);
   const onRunRef = useRef(onRun);
+  const blockCopyPasteRef = useRef(blockCopyPaste);
+  const onBlockedRef = useRef(onBlocked);
 
   useEffect(() => {
     onChangeRef.current = onChange;
     onRunRef.current = onRun;
-  }, [onChange, onRun]);
+    blockCopyPasteRef.current = blockCopyPaste;
+    onBlockedRef.current = onBlocked;
+  }, [onChange, onRun, blockCopyPaste, onBlocked]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -44,8 +53,104 @@ export function PythonEditor({
           indentUnit.of("    "),
           EditorView.contentAttributes.of({
             "aria-label": "Editor kode Python",
+            autocorrect: "off",
+            autocapitalize: "off",
+            spellcheck: "false",
+            ...(initialBlockCopyPasteRef.current
+              ? { "data-copy-lock": "true" }
+              : {}),
+          }),
+          EditorView.domEventHandlers({
+            beforeinput: (event) => {
+              if (!blockCopyPasteRef.current) return false;
+              const inputType =
+                "inputType" in event
+                  ? String((event as InputEvent).inputType ?? "")
+                  : "";
+              if (
+                inputType === "insertFromPaste" ||
+                inputType === "insertFromDrop" ||
+                inputType === "insertFromYank" ||
+                inputType === "deleteByCut" ||
+                inputType === "deleteByDrag"
+              ) {
+                event.preventDefault();
+                onBlockedRef.current?.(
+                  inputType.includes("Cut") ? "cut" : "paste",
+                );
+                return true;
+              }
+              return false;
+            },
+            paste: (event) => {
+              if (!blockCopyPasteRef.current) return false;
+              event.preventDefault();
+              onBlockedRef.current?.("paste");
+              return true;
+            },
+            copy: (event) => {
+              if (!blockCopyPasteRef.current) return false;
+              event.preventDefault();
+              onBlockedRef.current?.("copy");
+              return true;
+            },
+            cut: (event) => {
+              if (!blockCopyPasteRef.current) return false;
+              event.preventDefault();
+              onBlockedRef.current?.("cut");
+              return true;
+            },
+            drop: (event) => {
+              if (!blockCopyPasteRef.current) return false;
+              event.preventDefault();
+              onBlockedRef.current?.("drop");
+              return true;
+            },
+            dragover: (event) => {
+              if (!blockCopyPasteRef.current) return false;
+              event.preventDefault();
+              return true;
+            },
+            contextmenu: (event) => {
+              if (!blockCopyPasteRef.current) return false;
+              event.preventDefault();
+              onBlockedRef.current?.("contextmenu");
+              return true;
+            },
           }),
           keymap.of([
+            {
+              key: "Mod-c",
+              run: () => {
+                if (!blockCopyPasteRef.current) return false;
+                onBlockedRef.current?.("copy");
+                return true;
+              },
+            },
+            {
+              key: "Mod-x",
+              run: () => {
+                if (!blockCopyPasteRef.current) return false;
+                onBlockedRef.current?.("cut");
+                return true;
+              },
+            },
+            {
+              key: "Mod-v",
+              run: () => {
+                if (!blockCopyPasteRef.current) return false;
+                onBlockedRef.current?.("paste");
+                return true;
+              },
+            },
+            {
+              key: "Shift-Insert",
+              run: () => {
+                if (!blockCopyPasteRef.current) return false;
+                onBlockedRef.current?.("paste");
+                return true;
+              },
+            },
             {
               key: "Mod-Enter",
               run: () => {
@@ -68,6 +173,9 @@ export function PythonEditor({
                 "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
             },
             ".cm-content": { padding: "10px 0" },
+            ".cm-content[data-copy-lock='true']": {
+              WebkitTouchCallout: "none",
+            },
           }),
         ],
       }),

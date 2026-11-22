@@ -642,6 +642,33 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
     submission siswa pada tugas tersebut dihapus. Attempt, nilai, feedback,
     status lulus, riwayat, dan jeda percobaan ikut ter-reset; target tugas
     tidak dihapus. Hanya guru yang bisa melakukan reset.
+  - **Kunci copy/paste** per tugas (migration additif
+    `0016_yummy_shatterstar.sql`, default nonaktif):
+    - checkbox saat membuat tugas + toggle **Aktif/Nonaktif** di detail tugas;
+    - student editor memblokir copy, cut, paste, drag-drop, dan context menu;
+    - event `beforeinput` mobile (`insertFromPaste`/`insertFromDrop`/cut)
+      ikut diblokir, jadi paste dari keyboard HP/long-press tidak masuk;
+    - badge dan peringatan tampil di editor;
+    - input prompt `input()` tetap boleh paste karena bukan editor kode.
+  - **Tutup tugas manual** (migration additif
+    `0017_outgoing_christian_walker.sql`, default terbuka):
+    - switch **Dibuka/Ditutup** di detail tugas guru;
+    - kartu tugas tetap tampil di akun siswa dengan status **Ditutup**;
+    - link/CTA siswa dinonaktifkan dan URL detail langsung menghasilkan 404;
+    - Server Action submit menolak dengan pesan “Tugas sudah ditutup oleh
+      guru”;
+    - membuka kembali tidak menghapus submission, nilai, atau riwayat.
+  - **GPS per tugas** (migration additif
+    `0018_fantastic_pet_avengers.sql`, default nonaktif untuk tugas lama dan
+    dicentang secara default pada form tugas baru):
+    - switch **GPS wajib** di detail tugas guru;
+    - siswa harus mengaktifkan GPS sebelum halaman tugas terbuka;
+    - lokasi valid **1 jam**; gate muncul lagi jika sudah kedaluwarsa;
+    - server menolak submit tanpa lokasi `tersedia` dalam 1 jam;
+    - setiap pencatatan masuk ke tabel `tugas_locations`;
+    - guru melihat lokasi terakhir di roster/modal tugas dan riwayat lengkap
+      di halaman detail siswa `/guru/siswa/<id>`;
+    - reset pekerjaan menghapus riwayat lokasi siswa untuk tugas tersebut.
 - Panel **Perbedaan output** di detail guru membandingkan output siswa dengan
   target per baris:
   - menandai baris berbeda/hilang/tambahan;
@@ -724,6 +751,23 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   lalu submission dihapus. Roster berubah menjadi **0 percobaan / belum
   mengerjakan**, jumlah pengumpulan menjadi 0, target tugas tetap ada.
   Data uji dihapus.
+- Status uji kunci copy/paste (22 November 2026): task uji dengan
+  `block_copy_paste=true`; event `copy`, `cut`, `paste`, `drop`, `contextmenu`,
+  dan `beforeinput insertFromPaste` semuanya `defaultPrevented` dan isi editor
+  tidak berubah; mengetik manual tetap berjalan. Toggle guru mengubah nilai DB
+  dan halaman siswa setelah refresh; saat nonaktif event copy kembali normal.
+  Input prompt tidak terdampak. Data uji dihapus.
+- Status uji tutup tugas manual (22 November 2026): switch guru
+  `Dibuka → Ditutup` mengubah DB; kartu siswa tetap tampil dengan status
+  **Ditutup** tanpa link/CTA aktif; URL detail langsung menghasilkan **404**;
+  switch `Ditutup → Dibuka` mengembalikan link dan akses. Data uji dihapus.
+- Status uji GPS tugas (22 November 2026): task `require_gps=true`; halaman
+  siswa hanya menampilkan gate GPS tanpa editor. Izin ditolak tercatat dan
+  editor tetap terkunci; lokasi emulasi berhasil disimpan, halaman tugas
+  terbuka, roster guru menampilkan **Lihat peta**, dan halaman detail siswa
+  menampilkan riwayat `tersedia` + `ditolak`. Switch GPS dimatikan → gate
+  hilang; dinyalakan lagi dan lokasi dibuat >1 jam → gate muncul kembali.
+  Data uji dan riwayat lokasi dihapus.
 - Status uji export Excel (22 November 2026): route guru menghasilkan
   `progres-tugas-<id>.xlsx` (200) dengan sheet `Progres Tugas`, ringkasan
   target/KKM, serta baris lulus, belum lulus, dan belum mengerjakan; tanpa

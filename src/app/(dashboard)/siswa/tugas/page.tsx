@@ -4,6 +4,7 @@ import {
   CalendarDays,
   ClipboardList,
   GraduationCap,
+  MapPin,
   Sparkles,
 } from "@/components/icons";
 import { listTugasForSiswa } from "@/lib/tugas/queries";
@@ -69,18 +70,21 @@ export default async function SiswaTugasPage() {
               const repeat = item.repeatUntilPass && item.minScore !== null;
               const passed = item.passed === true;
               const selesai =
-                passed || (!repeat && item.attemptsLeft <= 0);
-              const status = passed
-                ? "Lulus"
-                : item.closed
-                  ? "Ditutup"
-                  : item.attemptsUsed === 0
-                    ? "Belum dikerjakan"
-                    : item.minScore !== null
-                      ? "Belum lulus"
-                      : item.bestScore !== null
-                        ? `Dinilai: ${item.bestScore}/${item.maxScore}`
-                        : "Terkumpul";
+                !item.manuallyClosed &&
+                (passed || (!repeat && item.attemptsLeft <= 0));
+              const status = item.manuallyClosed
+                ? "Ditutup"
+                : passed
+                  ? "Lulus"
+                  : item.closed
+                    ? "Ditutup"
+                    : item.attemptsUsed === 0
+                      ? "Belum dikerjakan"
+                      : item.minScore !== null
+                        ? "Belum lulus"
+                        : item.bestScore !== null
+                          ? `Dinilai: ${item.bestScore}/${item.maxScore}`
+                          : "Terkumpul";
 
               return (
                 <li
@@ -97,6 +101,12 @@ export default async function SiswaTugasPage() {
                       >
                         {JENIS_LABEL[item.jenis]}
                       </span>
+                      {item.requireGps ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-sky-700 ring-1 ring-sky-100">
+                          <MapPin className="h-2.5 w-2.5" />
+                          GPS wajib
+                        </span>
+                      ) : null}
                       <span
                         className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide ring-1 ${
                           selesai
@@ -111,12 +121,18 @@ export default async function SiswaTugasPage() {
                     </div>
                   </div>
 
-                  <Link
-                    href={`/siswa/tugas/${item.id}`}
-                    className="mt-3 text-[15px] font-extrabold leading-snug text-slate-900 hover:text-emerald-700"
-                  >
-                    {item.title}
-                  </Link>
+                  {item.manuallyClosed ? (
+                    <span className="mt-3 text-[15px] font-extrabold leading-snug text-slate-500">
+                      {item.title}
+                    </span>
+                  ) : (
+                    <Link
+                      href={`/siswa/tugas/${item.id}`}
+                      className="mt-3 text-[15px] font-extrabold leading-snug text-slate-900 hover:text-emerald-700"
+                    >
+                      {item.title}
+                    </Link>
+                  )}
 
                   <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-slate-500">
                     <span className="inline-flex items-center gap-1">
@@ -154,16 +170,22 @@ export default async function SiswaTugasPage() {
                         </>
                       )}
                     </span>
-                    <Link
-                      href={`/siswa/tugas/${item.id}`}
-                      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-emerald-700"
-                    >
-                      {passed
-                        ? "Lihat"
-                        : item.attemptsUsed > 0
-                          ? "Kerjakan Ulang"
-                          : "Kerjakan"}
-                    </Link>
+                    {item.manuallyClosed ? (
+                      <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">
+                        Ditutup
+                      </span>
+                    ) : (
+                      <Link
+                        href={`/siswa/tugas/${item.id}`}
+                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-emerald-700"
+                      >
+                        {passed
+                          ? "Lihat"
+                          : item.attemptsUsed > 0
+                            ? "Kerjakan Ulang"
+                            : "Kerjakan"}
+                      </Link>
+                    )}
                   </div>
                 </li>
               );

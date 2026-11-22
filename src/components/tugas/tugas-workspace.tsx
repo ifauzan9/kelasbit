@@ -94,6 +94,7 @@ export function TugasWorkspace({
   closed,
   initialCooldownUntil,
   expectedOutput,
+  blockCopyPaste,
 }: {
   tugasId: number;
   starterCode: string;
@@ -105,6 +106,7 @@ export function TugasWorkspace({
   closed: boolean;
   initialCooldownUntil: string | null;
   expectedOutput: string;
+  blockCopyPaste: boolean;
 }) {
   const router = useRouter();
   const draftKey = `kelasbit:tugas:${tugasId}:draft`;
@@ -117,6 +119,7 @@ export function TugasWorkspace({
   const [running, setRunning] = useState(false);
   const [runtime, setRuntime] = useState<RuntimeState>("booting");
   const [notice, setNotice] = useState<string | null>(null);
+  const [copyBlocked, setCopyBlocked] = useState(false);
   const [pendingPrompt, setPendingPrompt] = useState<{
     prompt: string;
     count: number;
@@ -428,6 +431,11 @@ export function TugasWorkspace({
     router.refresh();
   }
 
+  function handleCopyBlocked() {
+    setCopyBlocked(true);
+    window.setTimeout(() => setCopyBlocked(false), 2000);
+  }
+
   const submitHint = closed
     ? "Batas waktu sudah lewat."
     : completed
@@ -558,9 +566,31 @@ export function TugasWorkspace({
               <CodeXml className="h-3.5 w-3.5 text-emerald-300" />
               jawaban.py
             </span>
-            <span className="text-[10px] text-slate-500">Python 3 · Pyodide</span>
+            <div className="flex items-center gap-1.5">
+              {blockCopyPaste ? (
+                <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-rose-300 ring-1 ring-rose-400/20">
+                  Copy/paste dikunci
+                </span>
+              ) : null}
+              <span className="text-[10px] text-slate-500">
+                Python 3 · Pyodide
+              </span>
+            </div>
           </header>
-          <PythonEditor value={code} onChange={setCode} onRun={handleRun} />
+          {blockCopyPaste ? (
+            <p className="border-b border-rose-200 bg-rose-50 px-3.5 py-2 text-[11px] font-bold text-rose-900">
+              {copyBlocked
+                ? "Aksi copy/paste diblokir untuk tugas ini."
+                : "Copy, cut, paste, dan drag-drop dinonaktifkan untuk tugas ini."}
+            </p>
+          ) : null}
+          <PythonEditor
+            value={code}
+            onChange={setCode}
+            onRun={handleRun}
+            blockCopyPaste={blockCopyPaste}
+            onBlocked={handleCopyBlocked}
+          />
         </div>
 
         <div className="space-y-4">

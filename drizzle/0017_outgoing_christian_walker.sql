@@ -1,0 +1,1 @@
+ALTER TABLE "tugas" ADD COLUMN "manually_closed" boolean DEFAULT false NOT NULL;

@@ -3,6 +3,7 @@ import type {
   TugasJenis,
   TugasTargetType,
 } from "@/lib/db/schema";
+import type { LoginLocationStatus } from "@/lib/auth/geolocation";
 import type {
   TugasCheck,
   TugasMetrics,
@@ -27,6 +28,9 @@ export type TugasView = {
   repeatUntilPass: boolean;
   structureRules: TugasStructureRules | null;
   structureWeight: number;
+  blockCopyPaste: boolean;
+  manuallyClosed: boolean;
+  requireGps: boolean;
   dueAt: string | null;
   createdAt: string;
   submissionCount: number;
@@ -51,6 +55,19 @@ export type TugasSubmissionView = {
   checks: TugasCheck[] | null;
   feedback: string | null;
   submittedAt: string;
+};
+
+export type TugasLocationView = {
+  id: number;
+  tugasId: number;
+  tugasTitle: string;
+  userId: number;
+  userName: string | null;
+  status: LoginLocationStatus;
+  latitude: number | null;
+  longitude: number | null;
+  accuracy: number | null;
+  capturedAt: string;
 };
 
 export type TugasSiswaView = TugasView & {
@@ -80,6 +97,7 @@ export type TugasRosterRow = {
   passed: boolean | null;
   lastSubmittedAt: string | null;
   status: TugasRosterStatus;
+  latestLocation: TugasLocationView | null;
 };
 
 export type TugasRoster = {

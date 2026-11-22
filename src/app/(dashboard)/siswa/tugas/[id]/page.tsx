@@ -7,6 +7,7 @@ import {
   GraduationCap,
 } from "@/components/icons";
 import { TugasRequirements } from "@/components/tugas/tugas-requirements";
+import { TugasGpsGate } from "@/components/tugas/tugas-gps-gate";
 import { TugasWorkspace } from "@/components/tugas/tugas-workspace";
 import { getTugasForSiswa } from "@/lib/tugas/queries";
 import {
@@ -62,7 +63,7 @@ export default async function SiswaTugasDetailPage({
   const data = await getTugasForSiswa(id);
   if (!data) notFound();
 
-  const { tugas, submissions } = data;
+  const { tugas, submissions, latestLocation } = data;
   const attemptsLeft = Math.max(0, tugas.maxAttempts - submissions.length);
   const closed =
     tugas.dueAt !== null && new Date(tugas.dueAt).getTime() <= Date.now();
@@ -79,6 +80,30 @@ export default async function SiswaTugasDetailPage({
   const repeat = tugas.repeatUntilPass && tugas.minScore !== null;
   const canWork =
     !closed && passed !== true && (repeat || attemptsLeft > 0);
+  const GPS_VALIDITY_MS = 60 * 60 * 1000;
+  const gpsValid =
+    latestLocation?.status === "tersedia" &&
+    new Date(latestLocation.capturedAt).getTime() >=
+      Date.now() - GPS_VALIDITY_MS;
+
+  if (tugas.requireGps && canWork && !gpsValid) {
+    return (
+      <>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Link
+            href="/siswa/tugas"
+            className="text-xs font-bold text-emerald-700 hover:underline"
+          >
+            ← Kembali ke daftar tugas
+          </Link>
+        </div>
+        <TugasGpsGate tugasId={tugas.id} tugasTitle={tugas.title} />
+        <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
+          Soal dan editor akan ditampilkan setelah lokasi GPS berhasil dicatat.
+        </p>
+      </>
+    );
+  }
 
   let cooldownUntil: string | null = null;
   if (
@@ -118,6 +143,11 @@ export default async function SiswaTugasDetailPage({
               <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white">
                 {JENIS_LABEL[tugas.jenis]}
               </span>
+              {tugas.blockCopyPaste ? (
+                <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-rose-700 ring-1 ring-rose-100">
+                  Copy/paste dikunci
+                </span>
+              ) : null}
               {tugas.dueAt ? (
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500">
                   <CalendarDays className="h-3 w-3 text-slate-400" />
@@ -196,6 +226,7 @@ export default async function SiswaTugasDetailPage({
             initialCooldownUntil={cooldownUntil}
             closed={closed}
             expectedOutput={tugas.expectedOutput}
+            blockCopyPaste={tugas.blockCopyPaste}
           />
         </div>
       ) : passed === true ? null : (

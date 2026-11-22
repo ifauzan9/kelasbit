@@ -212,6 +212,12 @@ export const tugas = pgTable(
     /** Aturan struktur AST + bobotnya. */
     structureRules: jsonb("structure_rules").$type<TugasStructureRules | null>(),
     structureWeight: integer("structure_weight").notNull().default(40),
+    /** Blokir copy, cut, paste, dan drag-drop di editor tugas siswa. */
+    blockCopyPaste: boolean("block_copy_paste").notNull().default(false),
+    /** Ditutup manual oleh guru; berbeda dari deadline. */
+    manuallyClosed: boolean("manually_closed").notNull().default(false),
+    /** Wajibkan GPS untuk masuk halaman tugas dan submit. */
+    requireGps: boolean("require_gps").notNull().default(false),
     dueAt: timestamp("due_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -240,9 +246,40 @@ export const tugasTargets = pgTable(
   ],
 );
 
+/** Riwayat titik lokasi saat siswa membuka/mengerjakan tugas. */
+export const tugasLocations = pgTable(
+  "tugas_locations",
+  {
+    id: serial("id").primaryKey(),
+    tugasId: integer("tugas_id")
+      .notNull()
+      .references(() => tugas.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    accuracy: doublePrecision("accuracy"),
+    status: varchar("status", { length: 20 }).notNull().default("tidak_dicatat"),
+    capturedAt: timestamp("captured_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("tugas_locations_user_captured_idx").on(
+      table.userId,
+      table.capturedAt,
+    ),
+    index("tugas_locations_tugas_user_captured_idx").on(
+      table.tugasId,
+      table.userId,
+      table.capturedAt,
+    ),
+  ],
+);
+
 /** Satu baris per percobaan pengumpulan tugas coding. */
-export const tugasSubmissions = pgTable(
-  "tugas_submissions",
+export const tugasSubmissions = pgTable(  "tugas_submissions",
   {
     id: serial("id").primaryKey(),
     tugasId: integer("tugas_id")

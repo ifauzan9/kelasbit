@@ -1,4 +1,4 @@
-import { asc, count, eq, sql } from "drizzle-orm";
+import { and, asc, count, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { kelas, users } from "@/lib/db/schema";
 
@@ -18,6 +18,28 @@ export async function listSiswa() {
     .leftJoin(kelas, eq(kelas.id, users.kelasId))
     .where(eq(users.role, "siswa"))
     .orderBy(asc(users.name));
+}
+
+export async function getSiswa(id: number) {
+  if (!Number.isInteger(id) || id <= 0) return null;
+
+  const [row] = await getDb()
+    .select({
+      id: users.id,
+      name: users.name,
+      username: users.username,
+      email: users.email,
+      isActive: users.isActive,
+      kelasId: users.kelasId,
+      kelasName: kelas.name,
+      academicYear: kelas.academicYear,
+    })
+    .from(users)
+    .leftJoin(kelas, eq(kelas.id, users.kelasId))
+    .where(and(eq(users.id, id), eq(users.role, "siswa")))
+    .limit(1);
+
+  return row ?? null;
 }
 
 export async function countSiswa(): Promise<number> {

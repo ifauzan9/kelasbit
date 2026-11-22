@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useEffect, useState } from "react";
 import {
   AlertCircle,
@@ -219,7 +220,7 @@ export function SiswaRow({
   }
 
   return (
-    <li className="rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-[0_1px_2px_rgba(16,12,40,0.04)] transition hover:border-emerald-200 hover:shadow-[0_16px_36px_-28px_rgba(16,12,40,0.35)]">
+    <li className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(16,12,40,0.04)] transition hover:border-emerald-200 hover:shadow-[0_16px_36px_-28px_rgba(16,12,40,0.35)]">
       <div className="flex items-start gap-3">
         <span
           className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ${
@@ -232,7 +233,7 @@ export function SiswaRow({
         </span>
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
             <div className="min-w-0">
               <h3 className="truncate text-sm font-extrabold text-slate-900">
                 {siswa.name}
@@ -268,11 +269,19 @@ export function SiswaRow({
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex flex-wrap items-center gap-1 border-t border-slate-100 pt-2 sm:justify-end sm:border-t-0 sm:pt-0">
               <form action={toggleAction}>
                 <input type="hidden" name="id" value={siswa.id} />
                 <ActiveToggle aktif={siswa.isActive} pending={togglePending} />
               </form>
+
+              <Link
+                href={`/guru/siswa/${siswa.id}`}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+              >
+                <UserRound className="h-4 w-4" />
+                <span className="hidden sm:inline">Detail</span>
+              </Link>
 
               <button
                 type="button"

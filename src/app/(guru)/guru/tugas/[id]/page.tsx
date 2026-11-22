@@ -7,10 +7,14 @@ import {
   ClipboardList,
   Download,
   GraduationCap,
+  MapPin,
   Users,
 } from "@/components/icons";
 import { SubmissionDetailContent } from "@/components/tugas/submission-detail";
 import { SubmissionDetails } from "@/components/tugas/submission-details";
+import { TugasCopyPasteToggle } from "@/components/tugas/copy-paste-toggle";
+import { TugasCloseToggle } from "@/components/tugas/tugas-close-toggle";
+import { TugasGpsToggle } from "@/components/tugas/tugas-gps-toggle";
 import { TugasRosterTable } from "@/components/tugas/tugas-roster";
 import { requireUser } from "@/lib/auth/session";
 import {
@@ -108,6 +112,17 @@ export default async function GuruTugasDetailPage({
               <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white">
                 {JENIS_LABEL[tugas.jenis]}
               </span>
+              {tugas.manuallyClosed ? (
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100">
+                  Ditutup
+                </span>
+              ) : null}
+              {tugas.requireGps ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-sky-700 ring-1 ring-sky-100">
+                  <MapPin className="h-2.5 w-2.5" />
+                  GPS wajib
+                </span>
+              ) : null}
               {tugas.dueAt ? (
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500">
                   <CalendarDays className="h-3 w-3 text-slate-400" />
@@ -160,6 +175,21 @@ export default async function GuruTugasDetailPage({
             {tugas.description}
           </p>
         ) : null}
+
+        <div className="mt-3 space-y-2">
+          <TugasCloseToggle
+            tugasId={tugas.id}
+            initialClosed={tugas.manuallyClosed}
+          />
+          <TugasGpsToggle
+            tugasId={tugas.id}
+            initialEnabled={tugas.requireGps}
+          />
+          <TugasCopyPasteToggle
+            tugasId={tugas.id}
+            initialEnabled={tugas.blockCopyPaste}
+          />
+        </div>
 
         {tugas.expectedOutput.trim() ? (
           <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">

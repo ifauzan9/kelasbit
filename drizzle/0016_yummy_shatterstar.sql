@@ -1,0 +1,1 @@
+ALTER TABLE "tugas" ADD COLUMN "block_copy_paste" boolean DEFAULT false NOT NULL;
