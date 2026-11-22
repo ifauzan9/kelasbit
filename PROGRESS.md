@@ -581,6 +581,11 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
 - Target tugas (eksklusif):
   - **Semua kelas**, **satu kelas**, atau **beberapa siswa** (tanpa batas
     jumlah, bisa lintas kelas/siswa tanpa kelas);
+  - tugas **target siswa** yang sudah dibuat bisa ditambah/dikurangi siswanya
+    dari halaman detail guru: tombol **Tambah siswa** dan ikon hapus pada chip
+    target; siswa yang sudah menjadi target tidak muncul lagi dan duplikat
+    diabaikan di server;
+  - menghapus target tidak menghapus submission, nilai, atau riwayat siswa;
   - query halaman siswa dan Server Action submit sama-sama memeriksa target;
   - guru dapat melihat daftar target siswa dan jumlahnya di halaman detail.
 - **Pemeriksaan struktur otomatis** (AST di Web Worker, dievaluasi di server):
@@ -810,6 +815,13 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   target/KKM, serta baris lulus, belum lulus, dan belum mengerjakan; tanpa
   login diarahkan ke halaman login dan ID tidak valid menghasilkan 404.
   Data uji dihapus.
+- Status uji tambah target siswa (22 November 2026): task target 1 siswa,
+  tombol **Tambah siswa** menampilkan picker berisi siswa aktif yang belum
+  menjadi target; menyimpan 1 siswa menambah target menjadi 2 dan roster
+  ikut berubah. Duplikat tidak dibuat ulang. Data uji dihapus.
+- Status uji hapus target siswa (22 November 2026): task target 2 siswa;
+  ikon hapus pada chip target + konfirmasi mengurangi target menjadi 1 dan
+  roster ikut berubah; submission/nilai tidak dihapus. Data uji dihapus.
 - Status uji variabel input (22 November 2026): AST mendeteksi `nama` dari
   `input()` dan penggunaannya di f-string/print. Kode
   `nama = input(); print("Halo, Dimas")` mendapat **35/100**, output **0**,

@@ -885,6 +885,143 @@ export async function setTugasRequireGps(input: {
   }
 }
 
+export type RemoveTugasTargetResult = {
+  ok: boolean;
+  error?: string;
+};
+
+/** Hapus satu siswa dari target tugas. Submission/nilai tidak dihapus. */
+export async function removeTugasTarget(input: {
+  tugasId: number;
+  userId: number;
+}): Promise<RemoveTugasTargetResult> {
+  await requireUser("guru");
+
+  if (
+    !Number.isInteger(input.tugasId) ||
+    input.tugasId <= 0 ||
+    !Number.isInteger(input.userId) ||
+    input.userId <= 0
+  ) {
+    return { ok: false, error: "Data target tidak valid." };
+  }
+
+  const [assignment] = await getDb()
+    .select({ id: tugas.id, targetType: tugas.targetType })
+    .from(tugas)
+    .where(eq(tugas.id, input.tugasId))
+    .limit(1);
+
+  if (!assignment) return { ok: false, error: "Tugas tidak ditemukan." };
+  if (assignment.targetType !== "siswa") {
+    return { ok: false, error: "Tugas ini bukan bertarget siswa tertentu." };
+  }
+
+  try {
+    const deleted = await getDb()
+      .delete(tugasTargets)
+      .where(
+        and(
+          eq(tugasTargets.tugasId, input.tugasId),
+          eq(tugasTargets.userId, input.userId),
+        ),
+      )
+      .returning({ id: tugasTargets.id });
+
+    if (deleted.length === 0) {
+      return { ok: false, error: "Siswa bukan target tugas ini." };
+    }
+
+    await getDb()
+      .update(tugas)
+      .set({ updatedAt: new Date() })
+      .where(eq(tugas.id, input.tugasId));
+
+    return { ok: true };
+  } catch (error) {
+    console.error("tugas: gagal menghapus target siswa", error);
+    return { ok: false, error: "Gagal menghapus siswa. Coba lagi." };
+  }
+}
+
+export type AddTugasTargetsResult = {
+  ok: boolean;
+  error?: string;
+  added?: number;
+};
+
+/** Tambahkan siswa ke tugas yang sudah bertarget siswa tertentu. */
+export async function addTugasTargets(input: {
+  tugasId: number;
+  userIds: number[];
+}): Promise<AddTugasTargetsResult> {
+  await requireUser("guru");
+
+  if (!Number.isInteger(input.tugasId) || input.tugasId <= 0) {
+    return { ok: false, error: "Tugas tidak valid." };
+  }
+
+  const userIds = Array.from(
+    new Set(input.userIds.filter((id) => Number.isInteger(id) && id > 0)),
+  ).slice(0, 500);
+
+  if (userIds.length === 0) {
+    return { ok: false, error: "Pilih minimal satu siswa." };
+  }
+
+  const [assignment] = await getDb()
+    .select({ id: tugas.id, targetType: tugas.targetType })
+    .from(tugas)
+    .where(eq(tugas.id, input.tugasId))
+    .limit(1);
+
+  if (!assignment) return { ok: false, error: "Tugas tidak ditemukan." };
+  if (assignment.targetType !== "siswa") {
+    return {
+      ok: false,
+      error: "Siswa hanya bisa ditambahkan pada tugas bertarget siswa tertentu.",
+    };
+  }
+
+  const found = await getDb()
+    .select({ id: users.id })
+    .from(users)
+    .where(
+      and(
+        inArray(users.id, userIds),
+        eq(users.role, "siswa"),
+        eq(users.isActive, true),
+      ),
+    );
+
+  if (found.length !== userIds.length) {
+    return { ok: false, error: "Ada siswa yang tidak ditemukan/nonaktif." };
+  }
+
+  try {
+    const inserted = await getDb()
+      .insert(tugasTargets)
+      .values(
+        userIds.map((userId) => ({
+          tugasId: input.tugasId,
+          userId,
+        })),
+      )
+      .onConflictDoNothing()
+      .returning({ id: tugasTargets.id });
+
+    await getDb()
+      .update(tugas)
+      .set({ updatedAt: new Date() })
+      .where(eq(tugas.id, input.tugasId));
+
+    return { ok: true, added: inserted.length };
+  } catch (error) {
+    console.error("tugas: gagal menambah target siswa", error);
+    return { ok: false, error: "Gagal menambah siswa. Coba lagi." };
+  }
+}
+
 export type TugasGpsPassResult = {
   ok: boolean;
   error?: string;

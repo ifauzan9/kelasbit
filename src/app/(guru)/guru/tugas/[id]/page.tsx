@@ -15,8 +15,11 @@ import { SubmissionDetails } from "@/components/tugas/submission-details";
 import { TugasCopyPasteToggle } from "@/components/tugas/copy-paste-toggle";
 import { TugasCloseToggle } from "@/components/tugas/tugas-close-toggle";
 import { TugasGpsToggle } from "@/components/tugas/tugas-gps-toggle";
+import { AddTugasTargets } from "@/components/tugas/add-tugas-targets";
+import { RemoveTugasTargetButton } from "@/components/tugas/remove-tugas-target-button";
 import { TugasRosterTable } from "@/components/tugas/tugas-roster";
 import { requireUser } from "@/lib/auth/session";
+import { listSiswa } from "@/lib/guru/siswa-queries";
 import {
   getTugasForGuru,
   getTugasRoster,
@@ -78,6 +81,22 @@ export default async function GuruTugasDetailPage({
   const roster = await getTugasRoster(id);
   const targets =
     tugas.targetType === "siswa" ? await listTugasTargets(id) : [];
+  const targetIds = new Set(targets.map((target) => target.id));
+  const availableTargetStudents =
+    tugas.targetType === "siswa"
+      ? (await listSiswa())
+          .filter(
+            (student) => student.isActive && !targetIds.has(student.id),
+          )
+          .map((student) => ({
+            id: student.id,
+            name: student.name,
+            username: student.username,
+            kelasLabel: student.kelasName
+              ? `${student.kelasName} · ${student.academicYear ?? ""}`.trim()
+              : null,
+          }))
+      : [];
 
   return (
     <>
@@ -222,13 +241,26 @@ export default async function GuruTugasDetailPage({
               {targets.map((target) => (
                 <span
                   key={target.id}
-                  className="rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 ring-1 ring-slate-200"
+                  className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 ring-1 ring-slate-200"
                 >
-                  {target.name}
-                  {target.kelasLabel ? ` · ${target.kelasLabel}` : " · tanpa kelas"}
+                  <span>
+                    {target.name}
+                    {target.kelasLabel
+                      ? ` · ${target.kelasLabel}`
+                      : " · tanpa kelas"}
+                  </span>
+                  <RemoveTugasTargetButton
+                    tugasId={tugas.id}
+                    userId={target.id}
+                    name={target.name}
+                  />
                 </span>
               ))}
             </div>
+            <AddTugasTargets
+              tugasId={tugas.id}
+              students={availableTargetStudents}
+            />
           </div>
         ) : null}
       </section>
