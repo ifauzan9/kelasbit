@@ -8,7 +8,9 @@ import {
   kelas,
   tugas,
   tugasGpsPasses,
+  tugasLinks,
   tugasLocations,
+  tugasQuestions,
   tugasSubmissions,
   tugasTargets,
   users,
@@ -44,6 +46,17 @@ function generateGpsPassCode(length = 8): string {
 const JENIS: TugasJenis[] = ["tugas", "ulangan", "remedial"];
 const TARGET_TYPES: TugasTargetType[] = ["semua", "kelas", "siswa"];
 const STATUSES: LabRunStatus[] = ["success", "error", "timeout", "stopped"];
+
+async function hasTugasLink(tugasId: number, userId: number): Promise<boolean> {
+  const [row] = await getDb()
+    .select({ id: tugasLinks.id })
+    .from(tugasLinks)
+    .where(
+      and(eq(tugasLinks.tugasId, tugasId), eq(tugasLinks.userId, userId)),
+    )
+    .limit(1);
+  return Boolean(row);
+}
 
 export type TugasFormState = {
   error?: string;
@@ -345,6 +358,7 @@ export async function deleteTugas(
 
 export type SubmitTugasInput = {
   tugasId: number;
+  questionId?: number | null;
   code: string;
   stdin: string;
   stdout: string;
@@ -357,6 +371,7 @@ export type SubmitTugasResult =
   | {
       ok: true;
       submissionId: number;
+      questionId: number | null;
       score: number | null;
       passed: boolean | null;
       attemptsLeft: number | null;
@@ -366,6 +381,8 @@ export type SubmitTugasResult =
       criticalFailed: boolean;
       variableUsed: number;
       variableTotal: number;
+      taskCompleted: boolean;
+      finalScore: number | null;
     }
   | { ok: false; error: string; cooldownUntil?: string };
 
@@ -486,6 +503,35 @@ export async function submitTugas(
     return { ok: false, error: "Batas waktu pengumpulan sudah lewat." };
   }
 
+  let question: typeof tugasQuestions.$inferSelect | null = null;
+  if (input.questionId !== undefined && input.questionId !== null) {
+    if (!Number.isInteger(input.questionId) || input.questionId <= 0) {
+      return { ok: false, error: "Soal tidak valid." };
+    }
+    const [row] = await getDb()
+      .select()
+      .from(tugasQuestions)
+      .where(
+        and(
+          eq(tugasQuestions.id, input.questionId),
+          eq(tugasQuestions.tugasId, assignment.id),
+        ),
+      )
+      .limit(1);
+    if (!row) return { ok: false, error: "Soal tidak ditemukan." };
+    question = row;
+  } else {
+    const [row] = await getDb()
+      .select({ id: tugasQuestions.id })
+      .from(tugasQuestions)
+      .where(eq(tugasQuestions.tugasId, assignment.id))
+      .limit(1);
+    if (row) {
+      return { ok: false, error: "Pilih soal yang ingin dikerjakan." };
+    }
+  }
+
+  const isMultiQuestion = question !== null;
   const attempts = await getDb()
     .select({
       score: tugasSubmissions.score,
@@ -497,14 +543,26 @@ export async function submitTugas(
       and(
         eq(tugasSubmissions.tugasId, assignment.id),
         eq(tugasSubmissions.userId, user.id),
+        isMultiQuestion
+          ? eq(tugasSubmissions.questionId, question!.id)
+          : undefined,
       ),
     )
     .orderBy(desc(tugasSubmissions.submittedAt), desc(tugasSubmissions.id));
 
   const attemptsUsed = attempts.length;
   const repeatUntilPass =
-    assignment.repeatUntilPass && assignment.minScore !== null;
+    !isMultiQuestion &&
+    assignment.repeatUntilPass &&
+    assignment.minScore !== null;
   const alreadyPassed = attempts.some((item) => item.passed === true);
+
+  if (isMultiQuestion && alreadyPassed) {
+    return {
+      ok: false,
+      error: "Soal ini sudah selesai dengan nilai penuh.",
+    };
+  }
 
   if (repeatUntilPass && alreadyPassed) {
     return {
@@ -513,11 +571,14 @@ export async function submitTugas(
     };
   }
 
-  // Jeda setelah percobaan ke-5, 10, 15, ...
+  const cooldownEvery = isMultiQuestion ? 10 : RETRY_COOLDOWN_EVERY;
+  const hasCooldown = isMultiQuestion || repeatUntilPass;
+
+  // Jeda per soal: setelah percobaan ke-10, 20, 30, ...
   if (
-    repeatUntilPass &&
+    hasCooldown &&
     attemptsUsed > 0 &&
-    attemptsUsed % RETRY_COOLDOWN_EVERY === 0
+    attemptsUsed % cooldownEvery === 0
   ) {
     const lastSubmittedAt = attempts[0]?.submittedAt;
     if (lastSubmittedAt) {
@@ -534,7 +595,7 @@ export async function submitTugas(
     }
   }
 
-  if (!repeatUntilPass && attemptsUsed >= assignment.maxAttempts) {
+  if (!repeatUntilPass && !isMultiQuestion && attemptsUsed >= assignment.maxAttempts) {
     return {
       ok: false,
       error: "Percobaan sudah habis. Hubungi guru untuk remedial.",
@@ -547,16 +608,19 @@ export async function submitTugas(
 
   const grade = computeAutoGrade({
     stdout,
-    expectedOutput: assignment.expectedOutput,
+    expectedOutput: question?.expectedOutput ?? assignment.expectedOutput,
     status: input.status,
-    maxScore: assignment.maxScore,
-    structureRules: assignment.structureRules,
-    structureWeight: assignment.structureWeight,
+    maxScore: question?.maxScore ?? assignment.maxScore,
+    structureRules: question?.structureRules ?? assignment.structureRules,
+    structureWeight: question?.structureWeight ?? assignment.structureWeight,
     metrics,
   });
 
-  const passed =
-    assignment.minScore !== null && grade.totalScore !== null
+  const passed = isMultiQuestion
+    ? grade.totalScore !== null
+      ? grade.totalScore >= question!.maxScore && !grade.mandatoryFailed
+      : null
+    : assignment.minScore !== null && grade.totalScore !== null
       ? grade.totalScore >= assignment.minScore && !grade.mandatoryFailed
       : null;
 
@@ -565,6 +629,7 @@ export async function submitTugas(
       .insert(tugasSubmissions)
       .values({
         tugasId: assignment.id,
+        questionId: question?.id ?? null,
         userId: user.id,
         attemptNo: attemptsUsed + 1,
         code,
@@ -583,35 +648,233 @@ export async function submitTugas(
 
     let cooldownUntil: string | null = null;
     if (
-      repeatUntilPass &&
+      hasCooldown &&
       passed === false &&
       grade.totalScore !== null &&
-      (attemptsUsed + 1) % RETRY_COOLDOWN_EVERY === 0
+      (attemptsUsed + 1) % cooldownEvery === 0
     ) {
       cooldownUntil = new Date(
         Date.now() + RETRY_COOLDOWN_MINUTES * 60_000,
       ).toISOString();
     }
 
+    let taskCompleted = false;
+    let finalScore: number | null = null;
+    if (isMultiQuestion) {
+      const [questions, allSubmissions] = await Promise.all([
+        getDb()
+          .select({
+            id: tugasQuestions.id,
+            maxScore: tugasQuestions.maxScore,
+          })
+          .from(tugasQuestions)
+          .where(eq(tugasQuestions.tugasId, assignment.id)),
+        getDb()
+          .select({
+            questionId: tugasSubmissions.questionId,
+            score: tugasSubmissions.score,
+          })
+          .from(tugasSubmissions)
+          .where(
+            and(
+              eq(tugasSubmissions.tugasId, assignment.id),
+              eq(tugasSubmissions.userId, user.id),
+            ),
+          ),
+      ]);
+      const bestByQuestion = new Map<number, number>();
+      for (const submission of allSubmissions) {
+        if (submission.questionId === null || submission.score === null) {
+          continue;
+        }
+        const current = bestByQuestion.get(submission.questionId);
+        if (current === undefined || submission.score > current) {
+          bestByQuestion.set(submission.questionId, submission.score);
+        }
+      }
+      finalScore = Math.min(
+        assignment.maxScore,
+        questions.reduce(
+          (total, item) => total + (bestByQuestion.get(item.id) ?? 0),
+          0,
+        ),
+      );
+      taskCompleted =
+        questions.length > 0 &&
+        questions.every(
+          (item) => (bestByQuestion.get(item.id) ?? 0) >= item.maxScore,
+        ) &&
+        (!assignment.linkRequired ||
+          (await hasTugasLink(assignment.id, user.id)));
+    }
+
     return {
       ok: true,
       submissionId: row.id,
+      questionId: question?.id ?? null,
       score: grade.totalScore,
       passed,
-      attemptsLeft: repeatUntilPass
-        ? null
-        : Math.max(0, assignment.maxAttempts - attemptsUsed - 1),
+      attemptsLeft:
+        isMultiQuestion || repeatUntilPass
+          ? null
+          : Math.max(0, assignment.maxAttempts - attemptsUsed - 1),
       cooldownUntil,
       feedback: null,
       mandatoryFailed: grade.mandatoryFailed,
       criticalFailed: grade.criticalFailed,
       variableUsed: grade.variableUsed,
       variableTotal: grade.variableTotal,
+      taskCompleted,
+      finalScore,
     };
   } catch (error) {
     console.error("tugas: gagal menyimpan submission", error);
     return { ok: false, error: "Gagal mengumpulkan tugas. Coba lagi." };
   }
+}
+
+export type SubmitTugasLinkResult =
+  | {
+      ok: true;
+      url: string;
+      taskCompleted: boolean;
+      finalScore: number | null;
+    }
+  | { ok: false; error: string };
+
+export async function submitTugasLink(input: {
+  tugasId: number;
+  url: string;
+}): Promise<SubmitTugasLinkResult> {
+  const user = await requireUser("siswa");
+
+  if (!Number.isInteger(input.tugasId) || input.tugasId <= 0) {
+    return { ok: false, error: "Tugas tidak valid." };
+  }
+
+  let rawUrl = input.url.trim().slice(0, 2_000);
+  if (!rawUrl) return { ok: false, error: "Tautan wajib diisi." };
+  if (!/^https?:\/\//i.test(rawUrl)) rawUrl = `https://${rawUrl}`;
+
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return { ok: false, error: "Tautan harus diawali http:// atau https://." };
+    }
+    rawUrl = url.toString();
+  } catch {
+    return { ok: false, error: "Format tautan tidak valid." };
+  }
+
+  const [assignment] = await getDb()
+    .select()
+    .from(tugas)
+    .where(eq(tugas.id, input.tugasId))
+    .limit(1);
+
+  if (!assignment) return { ok: false, error: "Tugas tidak ditemukan." };
+  if (assignment.manuallyClosed) {
+    return { ok: false, error: "Tugas sudah ditutup oleh guru." };
+  }
+  if (!assignment.linkRequired) {
+    return { ok: false, error: "Tugas ini tidak meminta tautan." };
+  }
+  if (assignment.dueAt && assignment.dueAt.getTime() <= Date.now()) {
+    return { ok: false, error: "Batas waktu pengumpulan sudah lewat." };
+  }
+
+  const [student] = await getDb()
+    .select({ kelasId: users.kelasId })
+    .from(users)
+    .where(eq(users.id, user.id))
+    .limit(1);
+
+  const targetType = assignment.targetType as TugasTargetType;
+  let allowed = false;
+
+  if (targetType === "semua") {
+    allowed = true;
+  } else if (targetType === "kelas") {
+    allowed =
+      assignment.kelasId !== null &&
+      assignment.kelasId === (student?.kelasId ?? null);
+  } else if (targetType === "siswa") {
+    const [target] = await getDb()
+      .select({ id: tugasTargets.id })
+      .from(tugasTargets)
+      .where(
+        and(
+          eq(tugasTargets.tugasId, assignment.id),
+          eq(tugasTargets.userId, user.id),
+        ),
+      )
+      .limit(1);
+    allowed = Boolean(target);
+  }
+
+  if (!allowed) return { ok: false, error: "Tugas ini bukan untukmu." };
+
+  await getDb()
+    .insert(tugasLinks)
+    .values({
+      tugasId: assignment.id,
+      userId: user.id,
+      url: rawUrl,
+    })
+    .onConflictDoUpdate({
+      target: [tugasLinks.tugasId, tugasLinks.userId],
+      set: { url: rawUrl, updatedAt: new Date() },
+    });
+
+  const [questions, submissions] = await Promise.all([
+    getDb()
+      .select({ id: tugasQuestions.id, maxScore: tugasQuestions.maxScore })
+      .from(tugasQuestions)
+      .where(eq(tugasQuestions.tugasId, assignment.id)),
+    getDb()
+      .select({
+        questionId: tugasSubmissions.questionId,
+        score: tugasSubmissions.score,
+      })
+      .from(tugasSubmissions)
+      .where(
+        and(
+          eq(tugasSubmissions.tugasId, assignment.id),
+          eq(tugasSubmissions.userId, user.id),
+        ),
+      ),
+  ]);
+
+  const bestByQuestion = new Map<number, number>();
+  for (const submission of submissions) {
+    if (submission.questionId === null || submission.score === null) continue;
+    const current = bestByQuestion.get(submission.questionId);
+    if (current === undefined || submission.score > current) {
+      bestByQuestion.set(submission.questionId, submission.score);
+    }
+  }
+
+  const taskCompleted =
+    questions.length > 0 &&
+    questions.every(
+      (question) =>
+        (bestByQuestion.get(question.id) ?? 0) >= question.maxScore,
+    );
+
+  const finalScore = Math.min(
+    assignment.maxScore,
+    questions.reduce(
+      (total, question) => total + (bestByQuestion.get(question.id) ?? 0),
+      0,
+    ),
+  );
+
+  return {
+    ok: true,
+    url: rawUrl,
+    taskCompleted,
+    finalScore,
+  };
 }
 
 export type GradeSubmissionResult = {

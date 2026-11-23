@@ -1,6 +1,6 @@
 # Status Pengerjaan
 
-Terakhir diperbarui: 21 November 2026
+Terakhir diperbarui: 23 November 2026
 
 ## Yang sudah jadi
 
@@ -52,6 +52,7 @@ Terakhir diperbarui: 21 November 2026
 | `/siswa/lab` | Lab Coding Python (editor, console, stdin, riwayat) |
 | `/siswa/tugas` | Daftar tugas/ulangan/remedial coding |
 | `/siswa/tugas/<id>` | Kerjakan tugas coding + riwayat pengumpulan |
+| `/siswa/tugas/<id>/soal/<questionId>` | Kerjakan satu soal tugas multi-soal |
 | `/guru/tugas` | Kelola tugas/ulangan/remedial coding |
 | `/guru/tugas/<id>` | Detail tugas + pengumpulan + penilaian |
 | `/guru` | Dashboard guru (wajib login sebagai guru) |
@@ -559,6 +560,53 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
 
 ### Tugas coding (tugas / ulangan / remedial)
 
+- Tugas **Pengganti Uprak 20 soal + tautan** (23 November 2026):
+  - satu kartu tugas berisi **20 soal coding**; setiap soal punya instruksi,
+    kode awal, output yang diharapkan, kunci jawaban, dan aturan struktur sendiri;
+  - migration additif `0020_lively_union_jack.sql`: tabel `tugas_questions`
+    (unik per tugas + nomor soal) dan kolom nullable
+    `tugas_submissions.question_id`;
+  - migration additif `0021_thankful_timeslip.sql`: tabel `tugas_links`
+    (satu tautan per siswa/tugas) dan kolom `tugas.link_required`;
+  - siswa membuka `/siswa/tugas/<id>` untuk melihat daftar soal, lalu
+    `/siswa/tugas/<id>/soal/<questionId>` untuk mengerjakan satu soal;
+  - setiap soal bernilai **5 poin**, nilai akhir adalah jumlah nilai terbaik
+    seluruh soal (maksimal **100**);
+  - **tanpa konversi tipe data**: semua input memakai `input()` sebagai teks,
+    tidak ada `int()`, `float()`, atau operasi hitung; soal yang menampilkan
+    total meminta total sebagai input;
+  - soal **1–5 versi sederhana**: masing-masing 1 `input()`, 1 nilai tetap,
+    dan 4 `print()`/4 baris output;
+  - kartu **Ketentuan Wajib Tugas** di setiap soal menampilkan info bahwa spasi
+    antarkata dan spasi awal baris diperhitungkan, sedangkan spasi akhir baris
+    diabaikan;
+  - soal **14–17** memakai garis pembatas `=` dan `-`; soal **18–20** mengikuti
+    pola remedial: 3 input, 2 nilai tetap, 14+ `print()`, judul, garis pembatas,
+    3 poin ketentuan, dan pesan penutup;
+  - **soal 21 berupa form tautan**, bukan soal coding: satu input link per
+    siswa/tugas, wajib diisi, **tidak menambah nilai**; tautan bisa diperbarui;
+  - KKM **100**: tugas hanya final jika **semua 20 soal 5/5 dan tautan sudah
+    dikumpulkan**;
+  - soal yang sudah 5/5 terkunci dan tidak bisa dikumpulkan ulang;
+  - percobaan dihitung **per soal**; jeda **5 menit** berlaku setelah percobaan
+    ke-10, 20, 30, dst. pada soal yang sama, soal lain tidak terkunci;
+  - setelah soal terakhir 5/5 dan tautan terkumpul, modal final langsung muncul
+    dengan nilai **100/100** dan status tugas selesai; jika tautan belum diisi,
+    soal 20 selesai tetapi tugas belum final;
+  - target awal **kosong** (`target_type = siswa`); guru menambahkan siswa lewat
+    tombol **Tambah siswa** yang sudah ada;
+  - detail guru menampilkan daftar 20 soal (instruksi, output, kunci, aturan),
+    link siswa di roster, reset pekerjaan, dan export Excel nilai total;
+  - data 20 soal disimpan di `scripts/seed-pengganti-uprak.ts`; versi SQL untuk
+    produksi ada di `scripts/seed-pengganti-uprak.sql` (jalankan setelah
+    migration `0020` + `0021` dan backup DB);
+  - status uji lokal: soal **1–20** pernah diuji lewat UI; setelah soal 1–5
+    disederhanakan, **soal 1–5 diuji ulang lewat UI dan semuanya 5/5**; soal 20
+    disubmit tanpa tautan → tidak final; setelah tautan dikumpulkan → modal
+    final **100/100**; tautan tersimpan di `tugas_links`; uji anti-hardcode
+    pada soal 1 menghasilkan **0/5** serta tidak lulus; tidak ditemukan bug
+    penilaian. Data uji sudah dihapus dan target dikosongkan kembali.
+
 - Menu **Tugas** aktif untuk guru & siswa:
   - guru: `/guru/tugas` (buat & daftar) dan `/guru/tugas/<id>` (pengumpulan + nilai);
   - siswa: `/siswa/tugas` (daftar) dan `/siswa/tugas/<id>` (kerjakan + riwayat).
@@ -809,7 +857,8 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
 - Status uji mobile GPS (22 November 2026): viewport **390 px** tanpa scroll
   horizontal; tombol GPS dan input kode full-width; status izin browser tampil;
   panel **“GPS tidak akurat atau ingin reset izin?”** berisi panduan Chrome
-  Android, Safari iPhone, Chrome/Edge desktop, dan Firefox. Data uji dihapus.
+  Android, Safari iPhone, Chrome/Edge desktop, dan Firefox. Kotak info
+  Perkiraan/Presisi diperbaiki agar teks membungkus normal. Data uji dihapus.
 - Status uji export Excel (22 November 2026): route guru menghasilkan
   `progres-tugas-<id>.xlsx` (200) dengan sheet `Progres Tugas`, ringkasan
   target/KKM, serta baris lulus, belum lulus, dan belum mengerjakan; tanpa

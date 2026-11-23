@@ -281,12 +281,15 @@ export function TugasGpsGate({
         ) : null}
 
         <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-3.5 py-3 text-[11px] leading-relaxed text-emerald-800">
-          <p className="flex items-start gap-2 break-words">
+          <div className="flex items-start gap-2">
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-            Jika browser menampilkan pilihan <strong>Perkiraan/Presisi</strong>,
-            pilih <strong>Presisi (Precise Location)</strong>. Jika akurasi
-            masih di luar batas, minta kode pass dari guru.
-          </p>
+            <p className="min-w-0 break-words">
+              Jika browser menampilkan pilihan{" "}
+              <strong>Perkiraan/Presisi</strong>, pilih{" "}
+              <strong>Presisi (Precise Location)</strong>. Jika akurasi masih
+              di luar batas, minta kode pass dari guru.
+            </p>
+          </div>
         </div>
 
         {message ? (

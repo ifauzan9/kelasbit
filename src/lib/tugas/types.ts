@@ -31,14 +31,39 @@ export type TugasView = {
   blockCopyPaste: boolean;
   manuallyClosed: boolean;
   requireGps: boolean;
+  linkRequired: boolean;
   dueAt: string | null;
   createdAt: string;
   submissionCount: number;
+  questionCount: number;
+};
+
+export type TugasQuestionView = {
+  id: number;
+  tugasId: number;
+  orderNo: number;
+  title: string;
+  description: string;
+  starterCode: string;
+  expectedOutput: string;
+  solutionCode: string;
+  maxScore: number;
+  structureRules: TugasStructureRules | null;
+  structureWeight: number;
+};
+
+export type TugasQuestionProgress = TugasQuestionView & {
+  attemptsUsed: number;
+  bestScore: number | null;
+  passed: boolean;
+  lastSubmittedAt: string | null;
 };
 
 export type TugasSubmissionView = {
   id: number;
   tugasId: number;
+  questionId: number | null;
+  questionTitle: string | null;
   userId: number;
   userName: string;
   attemptNo: number;
@@ -55,6 +80,14 @@ export type TugasSubmissionView = {
   checks: TugasCheck[] | null;
   feedback: string | null;
   submittedAt: string;
+};
+
+export type TugasLinkView = {
+  tugasId: number;
+  userId: number;
+  url: string;
+  submittedAt: string;
+  updatedAt: string;
 };
 
 export type TugasLocationView = {
@@ -88,6 +121,7 @@ export type TugasSiswaView = TugasView & {
   passed: boolean | null;
   lastSubmittedAt: string | null;
   closed: boolean;
+  linkSubmitted: boolean;
 };
 
 export type TugasRosterStatus =
@@ -110,6 +144,7 @@ export type TugasRosterRow = {
   status: TugasRosterStatus;
   latestLocation: TugasLocationView | null;
   gpsPass: TugasGpsPassView | null;
+  link: TugasLinkView | null;
 };
 
 export type TugasRoster = {

@@ -3,16 +3,22 @@ import {
   ListChecks,
   Variable,
 } from "@/components/icons";
-import type { TugasStructureRules } from "@/lib/tugas/rules";
+import {
+  RETRY_COOLDOWN_EVERY,
+  RETRY_COOLDOWN_MINUTES,
+  type TugasStructureRules,
+} from "@/lib/tugas/rules";
 
 export function TugasRequirements({
   rules,
   minScore,
   repeatUntilPass,
+  retryCooldownEvery = RETRY_COOLDOWN_EVERY,
 }: {
   rules: TugasStructureRules | null;
   minScore: number | null;
   repeatUntilPass: boolean;
+  retryCooldownEvery?: number;
 }) {
   if (!rules?.enabled) return null;
 
@@ -45,6 +51,9 @@ export function TugasRequirements({
       `Hasil program minimal ${rules.minOutputLines} baris tidak kosong`,
     );
   }
+  programRules.push(
+    "Spasi antarkata dan spasi awal baris diperhitungkan; spasi akhir baris diabaikan",
+  );
   if (hasInputs) {
     programRules.push(
       "Gunakan variabel dari input() di dalam print(), jangan menulis nilainya langsung",
@@ -184,7 +193,8 @@ export function TugasRequirements({
           </span>
           {repeatUntilPass ? (
             <span>
-              Bisa mengulang sampai lulus · jeda 5 menit setiap 5 percobaan
+              Bisa mengulang sampai lulus · jeda {RETRY_COOLDOWN_MINUTES} menit
+              setiap {retryCooldownEvery} percobaan
             </span>
           ) : null}
         </footer>

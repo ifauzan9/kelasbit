@@ -67,11 +67,15 @@ export default async function SiswaTugasPage() {
         ) : (
           <ul className="grid gap-4 md:grid-cols-2">
             {rows.map((item) => {
-              const repeat = item.repeatUntilPass && item.minScore !== null;
+              const isMultiQuestion = item.questionCount > 0;
+              const repeat =
+                isMultiQuestion ||
+                (item.repeatUntilPass && item.minScore !== null);
               const passed = item.passed === true;
-              const selesai =
-                !item.manuallyClosed &&
-                (passed || (!repeat && item.attemptsLeft <= 0));
+              const selesai = isMultiQuestion
+                ? passed
+                : !item.manuallyClosed &&
+                  (passed || (!repeat && item.attemptsLeft <= 0));
               const status = item.manuallyClosed
                 ? "Ditutup"
                 : passed
@@ -80,11 +84,13 @@ export default async function SiswaTugasPage() {
                     ? "Ditutup"
                     : item.attemptsUsed === 0
                       ? "Belum dikerjakan"
-                      : item.minScore !== null
-                        ? "Belum lulus"
-                        : item.bestScore !== null
-                          ? `Dinilai: ${item.bestScore}/${item.maxScore}`
-                          : "Terkumpul";
+                      : isMultiQuestion
+                        ? "Belum selesai"
+                        : item.minScore !== null
+                          ? "Belum lulus"
+                          : item.bestScore !== null
+                            ? `Dinilai: ${item.bestScore}/${item.maxScore}`
+                            : "Terkumpul";
 
               return (
                 <li
@@ -153,7 +159,20 @@ export default async function SiswaTugasPage() {
 
                   <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3 text-[11px]">
                     <span className="font-semibold text-slate-500">
-                      {repeat ? (
+                      {isMultiQuestion ? (
+                        <>
+                          {item.questionCount} soal · Nilai{" "}
+                          <span className="font-extrabold text-slate-700">
+                            {item.bestScore ?? 0}/{item.maxScore}
+                          </span>
+                          {item.minScore !== null ? ` · KKM ${item.minScore}` : ""}
+                          {item.linkRequired
+                            ? item.linkSubmitted
+                              ? " · tautan terkumpul"
+                              : " · tautan belum"
+                            : ""}
+                        </>
+                      ) : repeat ? (
                         <>
                           Percobaan{" "}
                           <span className="font-extrabold text-slate-700">
@@ -181,9 +200,13 @@ export default async function SiswaTugasPage() {
                       >
                         {passed
                           ? "Lihat"
-                          : item.attemptsUsed > 0
-                            ? "Kerjakan Ulang"
-                            : "Kerjakan"}
+                          : isMultiQuestion
+                            ? item.attemptsUsed > 0
+                              ? "Lanjutkan"
+                              : "Kerjakan"
+                            : item.attemptsUsed > 0
+                              ? "Kerjakan Ulang"
+                              : "Kerjakan"}
                       </Link>
                     )}
                   </div>

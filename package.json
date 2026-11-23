@@ -12,6 +12,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "node --env-file=.env scripts/seed.ts",
+    "db:seed:uprak": "node --env-file=.env scripts/seed-pengganti-uprak.ts",
     "db:journal": "node scripts/generate-migration-journal.mjs",
     "deploy:prepare": "node scripts/prepare-deploy.mjs"
   },

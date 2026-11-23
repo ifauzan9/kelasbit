@@ -155,16 +155,20 @@ export default async function GuruTugasPage() {
                         ) : null}
                       </div>
                       <p className="mt-1.5 text-[11px] font-medium text-slate-400">
-                        {item.submissionCount} pengumpulan · nilai maks{" "}
-                        {item.maxScore} · {item.maxAttempts} percobaan
+                        {item.submissionCount} pengumpulan ·{" "}
+                        {item.questionCount > 0
+                          ? `${item.questionCount} soal · nilai total ${item.maxScore}`
+                          : `nilai maks ${item.maxScore} · ${item.maxAttempts} percobaan`}
                         {item.minScore !== null
                           ? ` · KKM ${item.minScore}${
                               item.repeatUntilPass ? " (ulangi)" : ""
                             }`
                           : ""}
-                        {item.expectedOutput.trim()
-                          ? " · auto-grade"
-                          : " · nilai manual"}
+                        {item.questionCount > 0
+                          ? " · auto-grade per soal"
+                          : item.expectedOutput.trim()
+                            ? " · auto-grade"
+                            : " · nilai manual"}
                       </p>
                     </div>
 

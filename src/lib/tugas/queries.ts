@@ -5,17 +5,24 @@ import {
   kelas,
   tugas,
   tugasGpsPasses,
+  tugasLinks,
   tugasLocations,
+  tugasQuestions,
   tugasSubmissions,
   tugasTargets,
   users,
+  type TugasLink,
+  type TugasQuestion,
   type LabRunStatus,
   type TugasJenis,
   type TugasTargetType,
 } from "@/lib/db/schema";
 import type {
   TugasGpsPassView,
+  TugasLinkView,
   TugasLocationView,
+  TugasQuestionProgress,
+  TugasQuestionView,
   TugasRoster,
   TugasRosterRow,
   TugasSiswaView,
@@ -44,6 +51,7 @@ type TugasRow = {
   blockCopyPaste: boolean;
   manuallyClosed: boolean;
   requireGps: boolean;
+  linkRequired: boolean;
   dueAt: Date | null;
   createdAt: Date;
   kelasName: string | null;
@@ -54,6 +62,7 @@ function toView(
   row: TugasRow,
   submissionCount: number,
   targetCount: number,
+  questionCount = 0,
 ): TugasView {
   return {
     id: row.id,
@@ -78,9 +87,11 @@ function toView(
     blockCopyPaste: row.blockCopyPaste,
     manuallyClosed: row.manuallyClosed,
     requireGps: row.requireGps,
+    linkRequired: row.linkRequired,
     dueAt: row.dueAt ? row.dueAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     submissionCount,
+    questionCount,
   };
 }
 
@@ -103,11 +114,28 @@ const tugasSelect = {
   blockCopyPaste: tugas.blockCopyPaste,
   manuallyClosed: tugas.manuallyClosed,
   requireGps: tugas.requireGps,
+  linkRequired: tugas.linkRequired,
   dueAt: tugas.dueAt,
   createdAt: tugas.createdAt,
   kelasName: kelas.name,
   academicYear: kelas.academicYear,
 };
+
+function toQuestionView(row: TugasQuestion): TugasQuestionView {
+  return {
+    id: row.id,
+    tugasId: row.tugasId,
+    orderNo: row.orderNo,
+    title: row.title,
+    description: row.description,
+    starterCode: row.starterCode,
+    expectedOutput: row.expectedOutput,
+    solutionCode: row.solutionCode,
+    maxScore: row.maxScore,
+    structureRules: normalizeStructureRules(row.structureRules),
+    structureWeight: row.structureWeight,
+  };
+}
 
 async function countMapFor(ids: number[]): Promise<Map<number, number>> {
   if (ids.length === 0) return new Map();
@@ -139,6 +167,40 @@ async function targetCountMapFor(ids: number[]): Promise<Map<number, number>> {
   return new Map(rows.map((row) => [row.tugasId, row.total]));
 }
 
+async function questionRowsForTugasIds(
+  ids: number[],
+): Promise<Map<number, TugasQuestionView[]>> {
+  if (ids.length === 0) return new Map();
+
+  const rows = await getDb()
+    .select()
+    .from(tugasQuestions)
+    .where(inArray(tugasQuestions.tugasId, ids))
+    .orderBy(tugasQuestions.tugasId, tugasQuestions.orderNo);
+
+  const byTugas = new Map<number, TugasQuestionView[]>();
+  for (const row of rows) {
+    const list = byTugas.get(row.tugasId) ?? [];
+    list.push(toQuestionView(row));
+    byTugas.set(row.tugasId, list);
+  }
+  return byTugas;
+}
+
+export async function listTugasQuestions(
+  tugasId: number,
+): Promise<TugasQuestionView[]> {
+  await requireUser("guru");
+
+  const rows = await getDb()
+    .select()
+    .from(tugasQuestions)
+    .where(eq(tugasQuestions.tugasId, tugasId))
+    .orderBy(tugasQuestions.orderNo);
+
+  return rows.map(toQuestionView);
+}
+
 export async function listTugasForGuru(): Promise<TugasView[]> {
   await requireUser("guru");
 
@@ -150,9 +212,15 @@ export async function listTugasForGuru(): Promise<TugasView[]> {
 
   const counts = await countMapFor(rows.map((row) => row.id));
   const targetCounts = await targetCountMapFor(rows.map((row) => row.id));
+  const questions = await questionRowsForTugasIds(rows.map((row) => row.id));
 
   return rows.map((row) =>
-    toView(row, counts.get(row.id) ?? 0, targetCounts.get(row.id) ?? 0),
+    toView(
+      row,
+      counts.get(row.id) ?? 0,
+      targetCounts.get(row.id) ?? 0,
+      questions.get(row.id)?.length ?? 0,
+    ),
   );
 }
 
@@ -170,7 +238,68 @@ export async function getTugasForGuru(id: number): Promise<TugasView | null> {
 
   const counts = await countMapFor([row.id]);
   const targetCounts = await targetCountMapFor([row.id]);
-  return toView(row, counts.get(row.id) ?? 0, targetCounts.get(row.id) ?? 0);
+  const questions = await questionRowsForTugasIds([row.id]);
+  return toView(
+    row,
+    counts.get(row.id) ?? 0,
+    targetCounts.get(row.id) ?? 0,
+    questions.get(row.id)?.length ?? 0,
+  );
+}
+
+function toLinkView(row: TugasLink): TugasLinkView {
+  return {
+    tugasId: row.tugasId,
+    userId: row.userId,
+    url: row.url,
+    submittedAt: row.submittedAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export async function getTugasLink(
+  tugasId: number,
+  userId: number,
+): Promise<TugasLinkView | null> {
+  const [row] = await getDb()
+    .select()
+    .from(tugasLinks)
+    .where(
+      and(eq(tugasLinks.tugasId, tugasId), eq(tugasLinks.userId, userId)),
+    )
+    .limit(1);
+
+  return row ? toLinkView(row) : null;
+}
+
+async function linkMapForTugas(
+  tugasId: number,
+): Promise<Map<number, TugasLinkView>> {
+  const rows = await getDb()
+    .select()
+    .from(tugasLinks)
+    .where(eq(tugasLinks.tugasId, tugasId));
+
+  return new Map(rows.map((row) => [row.userId, toLinkView(row)]));
+}
+
+async function linkMapForUser(
+  userId: number,
+  tugasIds: number[],
+): Promise<Map<number, TugasLinkView>> {
+  if (tugasIds.length === 0) return new Map();
+
+  const rows = await getDb()
+    .select()
+    .from(tugasLinks)
+    .where(
+      and(
+        eq(tugasLinks.userId, userId),
+        inArray(tugasLinks.tugasId, tugasIds),
+      ),
+    );
+
+  return new Map(rows.map((row) => [row.tugasId, toLinkView(row)]));
 }
 
 function toLocationView(row: {
@@ -342,11 +471,16 @@ export async function listTugasLocationsForUser(
 }
 
 function toSubmissionView(
-  row: typeof tugasSubmissions.$inferSelect & { userName: string | null },
+  row: typeof tugasSubmissions.$inferSelect & {
+    userName: string | null;
+    questionTitle?: string | null;
+  },
 ): TugasSubmissionView {
   return {
     id: row.id,
     tugasId: row.tugasId,
+    questionId: row.questionId,
+    questionTitle: row.questionTitle ?? null,
     userId: row.userId,
     userName: row.userName ?? "Siswa",
     attemptNo: row.attemptNo,
@@ -375,9 +509,14 @@ export async function listLatestSubmissionsForTugas(
     .select({
       submission: tugasSubmissions,
       userName: users.name,
+      questionTitle: tugasQuestions.title,
     })
     .from(tugasSubmissions)
     .innerJoin(users, eq(users.id, tugasSubmissions.userId))
+    .leftJoin(
+      tugasQuestions,
+      eq(tugasQuestions.id, tugasSubmissions.questionId),
+    )
     .where(eq(tugasSubmissions.tugasId, tugasId))
     .orderBy(desc(tugasSubmissions.submittedAt), desc(tugasSubmissions.id));
 
@@ -388,7 +527,11 @@ export async function listLatestSubmissionsForTugas(
     if (seen.has(row.submission.userId)) continue;
     seen.add(row.submission.userId);
     latest.push(
-      toSubmissionView({ ...row.submission, userName: row.userName }),
+      toSubmissionView({
+        ...row.submission,
+        userName: row.userName,
+        questionTitle: row.questionTitle,
+      }),
     );
   }
 
@@ -405,12 +548,26 @@ export async function getTugasRoster(
       targetType: tugas.targetType,
       kelasId: tugas.kelasId,
       minScore: tugas.minScore,
+      maxScore: tugas.maxScore,
+      linkRequired: tugas.linkRequired,
     })
     .from(tugas)
     .where(eq(tugas.id, tugasId))
     .limit(1);
 
   if (!assignment) return null;
+
+  const questionRows = await getDb()
+    .select({
+      id: tugasQuestions.id,
+      maxScore: tugasQuestions.maxScore,
+    })
+    .from(tugasQuestions)
+    .where(eq(tugasQuestions.tugasId, tugasId));
+  const questionMaxById = new Map(
+    questionRows.map((question) => [question.id, question.maxScore]),
+  );
+  const isMultiQuestion = questionRows.length > 0;
 
   const targetType = assignment.targetType as TugasTargetType;
 
@@ -457,6 +614,7 @@ export async function getTugasRoster(
   const rawSubmissions = await getDb()
     .select({
       userId: tugasSubmissions.userId,
+      questionId: tugasSubmissions.questionId,
       score: tugasSubmissions.score,
       passed: tugasSubmissions.passed,
       submittedAt: tugasSubmissions.submittedAt,
@@ -467,12 +625,18 @@ export async function getTugasRoster(
 
   const byUser = new Map<
     number,
-    { score: number | null; passed: boolean | null; submittedAt: Date }[]
+    {
+      questionId: number | null;
+      score: number | null;
+      passed: boolean | null;
+      submittedAt: Date;
+    }[]
   >();
 
   for (const submission of rawSubmissions) {
     const list = byUser.get(submission.userId) ?? [];
     list.push({
+      questionId: submission.questionId,
       score: submission.score,
       passed: submission.passed,
       submittedAt: submission.submittedAt,
@@ -482,19 +646,51 @@ export async function getTugasRoster(
 
   const latestLocations = await latestLocationsForTugas(tugasId);
   const latestGpsPasses = await latestGpsPassesForTugas(tugasId);
+  const linksByUser = await linkMapForTugas(tugasId);
 
   const rows: TugasRosterRow[] = students.map((student) => {
     const mine = byUser.get(student.id) ?? [];
     const attempts = mine.length;
     const latest = mine[0] ?? null;
+    const link = linksByUser.get(student.id) ?? null;
+    const linkSubmitted = !assignment.linkRequired || Boolean(link);
     const scores = mine
       .map((item) => item.score)
       .filter((value): value is number => typeof value === "number");
     const bestScore = scores.length > 0 ? Math.max(...scores) : null;
-    const passed =
-      assignment.minScore !== null
+
+    let totalBest = 0;
+    let allQuestionsPassed = false;
+    if (isMultiQuestion) {
+      const bestByQuestion = new Map<number, number>();
+      for (const item of mine) {
+        if (item.questionId === null || item.score === null) continue;
+        const current = bestByQuestion.get(item.questionId);
+        if (current === undefined || item.score > current) {
+          bestByQuestion.set(item.questionId, item.score);
+        }
+      }
+      allQuestionsPassed = [...questionMaxById].every(
+        ([questionId, maxScore]) =>
+          (bestByQuestion.get(questionId) ?? 0) >= maxScore,
+      );
+      for (const questionId of questionMaxById.keys()) {
+        totalBest += bestByQuestion.get(questionId) ?? 0;
+      }
+      totalBest = Math.min(assignment.maxScore, totalBest);
+    }
+
+    const passed = isMultiQuestion
+      ? assignment.minScore !== null
         ? attempts > 0
-          ? mine.some((item) => item.passed === true)
+          ? allQuestionsPassed &&
+            linkSubmitted &&
+            totalBest >= assignment.minScore
+          : null
+        : null
+      : assignment.minScore !== null
+        ? attempts > 0
+          ? mine.some((item) => item.passed === true) && linkSubmitted
           : null
         : null;
 
@@ -516,8 +712,16 @@ export async function getTugasRoster(
         : null,
       isActive: student.isActive,
       attempts,
-      lastScore: latest?.score ?? null,
-      bestScore,
+      lastScore: isMultiQuestion
+        ? attempts > 0
+          ? totalBest
+          : null
+        : latest?.score ?? null,
+      bestScore: isMultiQuestion
+        ? attempts > 0
+          ? totalBest
+          : null
+        : bestScore,
       passed,
       lastSubmittedAt: latest
         ? latest.submittedAt.toISOString()
@@ -525,6 +729,7 @@ export async function getTugasRoster(
       status,
       latestLocation: latestLocations.get(student.id) ?? null,
       gpsPass: latestGpsPasses.get(student.id) ?? null,
+      link,
     };
   });
 
@@ -600,19 +805,53 @@ export async function listTugasForSiswa(): Promise<TugasSiswaView[]> {
     list.push(submission);
     byTugas.set(submission.tugasId, list);
   }
+  const questionsByTugas = await questionRowsForTugasIds(ids);
+  const linksByTugas = await linkMapForUser(user.id, ids);
 
   const now = Date.now();
 
   return rows.map((row) => {
     const mine = byTugas.get(row.id) ?? [];
+    const questions = questionsByTugas.get(row.id) ?? [];
+    const isMultiQuestion = questions.length > 0;
+    const linkSubmitted = !row.linkRequired || linksByTugas.has(row.id);
     const scores = mine
       .map((item) => item.score)
       .filter((value): value is number => typeof value === "number");
-    const bestScore = scores.length > 0 ? Math.max(...scores) : null;
+    const singleBestScore = scores.length > 0 ? Math.max(...scores) : null;
+
+    let bestScore: number | null = singleBestScore;
+    let allQuestionsPassed = false;
+    if (isMultiQuestion) {
+      const bestByQuestion = new Map<number, number>();
+      for (const item of mine) {
+        if (item.questionId === null || item.score === null) continue;
+        const current = bestByQuestion.get(item.questionId);
+        if (current === undefined || item.score > current) {
+          bestByQuestion.set(item.questionId, item.score);
+        }
+      }
+      allQuestionsPassed = questions.every(
+        (question) =>
+          (bestByQuestion.get(question.id) ?? 0) >= question.maxScore,
+      );
+      bestScore = Math.min(
+        row.maxScore,
+        questions.reduce(
+          (total, question) => total + (bestByQuestion.get(question.id) ?? 0),
+          0,
+        ),
+      );
+    }
+
     const passed =
       row.minScore !== null
         ? mine.length > 0
-          ? mine.some((item) => item.passed === true)
+          ? isMultiQuestion
+            ? allQuestionsPassed &&
+              linkSubmitted &&
+              (bestScore ?? 0) >= row.minScore
+            : mine.some((item) => item.passed === true) && linkSubmitted
           : null
         : null;
     const lastSubmittedAt =
@@ -624,25 +863,30 @@ export async function listTugasForSiswa(): Promise<TugasSiswaView[]> {
         : null;
 
     return {
-      ...toView(row, mine.length, 0),
+      ...toView(row, mine.length, 0, questions.length),
       attemptsUsed: mine.length,
-      attemptsLeft: Math.max(0, row.maxAttempts - mine.length),
+      attemptsLeft: isMultiQuestion
+        ? 0
+        : Math.max(0, row.maxAttempts - mine.length),
       bestScore,
       passed,
       lastSubmittedAt,
       closed:
         row.manuallyClosed ||
         (row.dueAt !== null && row.dueAt.getTime() <= now),
+      linkSubmitted,
     };
   });
 }
 
 export async function getTugasForSiswa(tugasId: number): Promise<{
   tugas: TugasView;
+  questions: TugasQuestionProgress[];
   submissions: TugasSubmissionView[];
   latestLocation: TugasLocationView | null;
   gpsBypassActive: boolean;
   userId: number;
+  link: TugasLinkView | null;
 } | null> {
   const user = await requireUser("siswa");
   const kelasId = await siswaKelasId(user.id);
@@ -693,15 +937,50 @@ export async function getTugasForSiswa(tugasId: number): Promise<{
 
   const latestLocation = await getLatestTugasLocation(tugasId, user.id);
   const gpsBypassActive = await hasActiveGpsBypass(tugasId, user.id);
+  const link = await getTugasLink(tugasId, user.id);
+  const questionRows = await getDb()
+    .select()
+    .from(tugasQuestions)
+    .where(eq(tugasQuestions.tugasId, tugasId))
+    .orderBy(tugasQuestions.orderNo);
+  const questions = questionRows.map((question) => {
+    const mine = rows.filter(
+      (submission) => submission.questionId === question.id,
+    );
+    const scores = mine
+      .map((submission) => submission.score)
+      .filter((value): value is number => typeof value === "number");
+    const bestScore = scores.length > 0 ? Math.max(...scores) : null;
+    return {
+      ...toQuestionView(question),
+      attemptsUsed: mine.length,
+      bestScore,
+      passed: bestScore !== null && bestScore >= question.maxScore,
+      lastSubmittedAt:
+        mine.length > 0 ? mine[0].submittedAt.toISOString() : null,
+    } satisfies TugasQuestionProgress;
+  });
+  const questionTitleById = new Map(
+    questionRows.map((question) => [question.id, question.title]),
+  );
 
   return {
-    tugas: toView(row, rows.length, 0),
+    tugas: toView(row, rows.length, 0, questionRows.length),
+    questions,
     submissions: rows.map((item) =>
-      toSubmissionView({ ...item, userName: user.name }),
+      toSubmissionView({
+        ...item,
+        userName: user.name,
+        questionTitle:
+          item.questionId !== null
+            ? questionTitleById.get(item.questionId) ?? null
+            : null,
+      }),
     ),
     latestLocation,
     gpsBypassActive,
     userId: user.id,
+    link,
   };
 }
 

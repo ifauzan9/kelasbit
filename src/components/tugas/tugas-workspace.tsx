@@ -85,6 +85,11 @@ function formatRemaining(ms: number): string {
 
 export function TugasWorkspace({
   tugasId,
+  questionId,
+  questionNumber,
+  backHref,
+  taskMaxScore = 100,
+  totalQuestions = 20,
   starterCode,
   maxScore,
   minScore,
@@ -98,6 +103,11 @@ export function TugasWorkspace({
   draftOwnerId,
 }: {
   tugasId: number;
+  questionId?: number | null;
+  questionNumber?: number | null;
+  backHref?: string;
+  taskMaxScore?: number;
+  totalQuestions?: number;
   starterCode: string;
   maxScore: number;
   minScore: number | null;
@@ -111,7 +121,10 @@ export function TugasWorkspace({
   draftOwnerId: number;
 }) {
   const router = useRouter();
-  const draftKey = `kelasbit:tugas:${draftOwnerId}:${tugasId}:draft`;
+  const draftKey = questionId
+    ? `kelasbit:tugas:${draftOwnerId}:${tugasId}:soal:${questionId}:draft`
+    : `kelasbit:tugas:${draftOwnerId}:${tugasId}:draft`;
+  const questionMode = questionId !== undefined && questionId !== null;
 
   const [code, setCode] = useState(starterCode.trim() || DEFAULT_CODE);
   const [stdout, setStdout] = useState("");
@@ -143,6 +156,8 @@ export function TugasWorkspace({
     criticalFailed: boolean;
     variableUsed: number;
     variableTotal: number;
+    taskCompleted: boolean;
+    finalScore: number | null;
   } | null>(null);
 
   const workerRef = useRef<Worker | null>(null);
@@ -392,6 +407,7 @@ export function TugasWorkspace({
     setSubmitting(true);
     const response = await submitTugas({
       tugasId,
+      questionId,
       code: lastRun.code,
       stdin: lastRun.answers.join("\n"),
       stdout: lastRun.stdout,
@@ -423,6 +439,8 @@ export function TugasWorkspace({
       criticalFailed: response.criticalFailed,
       variableUsed: response.variableUsed,
       variableTotal: response.variableTotal,
+      taskCompleted: response.taskCompleted,
+      finalScore: response.finalScore,
     });
     if (response.passed === true) setCompleted(true);
     setLastRun(null);
@@ -430,8 +448,16 @@ export function TugasWorkspace({
   }
 
   function closeResultModal() {
+    const shouldReturnToQuestions =
+      Boolean(backHref) &&
+      (result?.taskCompleted === true || result?.passed === true);
     setShowResultModal(false);
     setResult(null);
+    if (backHref && shouldReturnToQuestions) {
+      router.push(backHref);
+      router.refresh();
+      return;
+    }
     router.refresh();
   }
 
@@ -443,7 +469,9 @@ export function TugasWorkspace({
   const submitHint = closed
     ? "Batas waktu sudah lewat."
     : completed
-      ? "Kamu sudah lulus tugas ini."
+      ? questionMode
+        ? "Soal ini sudah selesai dengan nilai penuh."
+        : "Kamu sudah lulus tugas ini."
       : cooldownActive
         ? `Istirahat dulu — coba lagi dalam ${formatRemaining(cooldownLeft)}.`
         : !repeatUntilPass && attempts <= 0
@@ -671,41 +699,55 @@ export function TugasWorkspace({
               id="tugas-result-title"
               className="mt-4 text-xl font-extrabold tracking-tight text-slate-900"
             >
-              {result.passed === true
-                ? "Selamat, kamu lulus!"
-                : result.criticalFailed
-                  ? "Output belum bisa dinilai"
-                  : result.mandatoryFailed
-                    ? "Struktur wajib belum lengkap"
-                    : result.score === null
-                      ? "Jawaban terkumpul"
-                      : "Belum lulus"}
+              {result.taskCompleted
+                ? "Pengganti Uprak selesai!"
+                : questionMode && result.passed === true
+                  ? `Soal ${questionNumber ?? ""} selesai!`
+                  : result.passed === true
+                    ? "Selamat, kamu lulus!"
+                    : result.criticalFailed
+                      ? "Output belum bisa dinilai"
+                      : result.mandatoryFailed
+                        ? "Struktur wajib belum lengkap"
+                        : result.score === null
+                          ? "Jawaban terkumpul"
+                          : "Belum benar"}
             </h2>
 
             <p className="mt-2 text-3xl font-extrabold tracking-tight text-slate-900">
-              {result.score === null ? "—" : result.score}
+              {result.taskCompleted
+                ? (result.finalScore ?? 0)
+                : result.score === null
+                  ? "—"
+                  : result.score}
               <span className="ml-1 text-sm font-bold text-slate-400">
-                / {maxScore}
+                / {result.taskCompleted ? taskMaxScore : maxScore}
               </span>
             </p>
 
             <p className="mt-2 text-xs leading-relaxed text-slate-500">
-              {result.passed === true
-                ? `Nilai kamu sudah mencapai KKM ${
-                    minScore ?? 0
-                  }. Tugas selesai.`
-                : result.criticalFailed
-                  ? "Variabel input belum dibuat dari input(). Nilai output belum dihitung."
-                  : result.mandatoryFailed
-                    ? result.variableTotal > 0 &&
-                      result.variableUsed < result.variableTotal
-                      ? `Variabel yang dipakai di print(): ${result.variableUsed} dari ${result.variableTotal}. Lengkapi semua variabel wajib.`
-                      : "Nama variabel, jumlah input/print, atau aturan struktur lain belum sesuai. Periksa ketentuan tugas."
-                    : result.score === null
-                      ? "Jawabanmu sudah tersimpan. Menunggu penilaian guru."
-                      : minScore !== null
-                        ? `Nilai minimal lulus adalah ${minScore}. Silakan kerjakan ulang.`
-                        : "Silakan kerjakan ulang jika ingin memperbaiki nilai."}
+              {result.taskCompleted
+                ? `Seluruh ${totalQuestions} soal sudah benar 5/5. Nilai akhir kamu ${result.finalScore ?? 0} dan tugas dinyatakan selesai.`
+                : questionMode && result.passed === true
+                  ? `Soal ini sudah 5/5. Lanjutkan ke soal berikutnya dari daftar soal.`
+                  : result.passed === true
+                    ? `Nilai kamu sudah mencapai KKM ${
+                        minScore ?? 0
+                      }. Tugas selesai.`
+                    : result.criticalFailed
+                      ? "Variabel input belum dibuat dari input(). Nilai output belum dihitung."
+                      : result.mandatoryFailed
+                        ? result.variableTotal > 0 &&
+                          result.variableUsed < result.variableTotal
+                          ? `Variabel yang dipakai di print(): ${result.variableUsed} dari ${result.variableTotal}. Lengkapi semua variabel wajib.`
+                          : "Nama variabel, jumlah input/print, atau aturan struktur lain belum sesuai. Periksa ketentuan soal."
+                        : result.score === null
+                          ? "Jawabanmu sudah tersimpan. Menunggu penilaian guru."
+                          : questionMode
+                            ? "Nilai soal ini belum 5/5. Perbaiki lalu kumpulkan lagi."
+                            : minScore !== null
+                              ? `Nilai minimal lulus adalah ${minScore}. Silakan kerjakan ulang.`
+                              : "Silakan kerjakan ulang jika ingin memperbaiki nilai."}
             </p>
 
             {cooldownActive && result.passed !== true ? (
@@ -721,7 +763,10 @@ export function TugasWorkspace({
               onClick={closeResultModal}
               className="mt-5 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-slate-800"
             >
-              Tutup
+              {questionMode &&
+              (result.taskCompleted || result.passed === true)
+                ? "Kembali ke daftar soal"
+                : "Tutup"}
             </button>
           </div>
         </div>

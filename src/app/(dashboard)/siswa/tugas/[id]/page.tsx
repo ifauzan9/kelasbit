@@ -8,6 +8,7 @@ import {
 } from "@/components/icons";
 import { TugasRequirements } from "@/components/tugas/tugas-requirements";
 import { TugasGpsGate } from "@/components/tugas/tugas-gps-gate";
+import { TugasLinkForm } from "@/components/tugas/tugas-link-form";
 import { TugasWorkspace } from "@/components/tugas/tugas-workspace";
 import { getTugasForSiswa } from "@/lib/tugas/queries";
 import { isGpsAccuracyAccepted, GPS_VALIDITY_MS } from "@/lib/tugas/location";
@@ -64,23 +65,55 @@ export default async function SiswaTugasDetailPage({
   const data = await getTugasForSiswa(id);
   if (!data) notFound();
 
-  const { tugas, submissions, latestLocation, gpsBypassActive, userId } = data;
+  const {
+    tugas,
+    questions,
+    submissions,
+    latestLocation,
+    gpsBypassActive,
+    userId,
+    link,
+  } = data;
+  const isMultiQuestion = questions.length > 0;
+  const totalBestScore = isMultiQuestion
+    ? Math.min(
+        tugas.maxScore,
+        questions.reduce(
+          (total, question) => total + (question.bestScore ?? 0),
+          0,
+        ),
+      )
+    : null;
+  const questionsPassed =
+    isMultiQuestion &&
+    questions.length > 0 &&
+    questions.every((question) => question.passed);
+  const linkDone = !tugas.linkRequired || Boolean(link);
+  const allRequirementsPassed = questionsPassed && linkDone;
   const attemptsLeft = Math.max(0, tugas.maxAttempts - submissions.length);
   const closed =
     tugas.dueAt !== null && new Date(tugas.dueAt).getTime() <= Date.now();
-  const bestScore = submissions.reduce<number | null>((best, item) => {
-    if (item.score === null) return best;
-    return best === null ? item.score : Math.max(best, item.score);
-  }, null);
+  const bestScore = isMultiQuestion
+    ? totalBestScore
+    : submissions.reduce<number | null>((best, item) => {
+        if (item.score === null) return best;
+        return best === null ? item.score : Math.max(best, item.score);
+      }, null);
   const passed =
     tugas.minScore !== null
-      ? submissions.length > 0
-        ? submissions.some((item) => item.passed === true)
-        : null
+      ? isMultiQuestion
+        ? submissions.length > 0
+          ? allRequirementsPassed
+          : null
+        : submissions.length > 0
+          ? submissions.some((item) => item.passed === true) && linkDone
+          : null
       : null;
-  const repeat = tugas.repeatUntilPass && tugas.minScore !== null;
-  const canWork =
-    !closed && passed !== true && (repeat || attemptsLeft > 0);
+  const repeat =
+    isMultiQuestion || (tugas.repeatUntilPass && tugas.minScore !== null);
+  const canWork = isMultiQuestion
+    ? !closed && !allRequirementsPassed
+    : !closed && passed !== true && (repeat || attemptsLeft > 0);
   const gpsValid =
     latestLocation?.status === "tersedia" &&
     isGpsAccuracyAccepted(latestLocation.accuracy) &&
@@ -133,9 +166,19 @@ export default async function SiswaTugasDetailPage({
           ← Kembali ke daftar tugas
         </Link>
         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-600 ring-1 ring-slate-200">
-          {repeat
-            ? `${submissions.length} percobaan`
-            : `Percobaan ${submissions.length} / ${tugas.maxAttempts}`}
+          {isMultiQuestion
+            ? `${questions.filter((question) => question.passed).length} / ${
+                questions.length
+              } soal selesai${
+                tugas.linkRequired
+                  ? link
+                    ? " · tautan terkumpul"
+                    : " · tautan belum"
+                  : ""
+              }`
+            : repeat
+              ? `${submissions.length} percobaan`
+              : `Percobaan ${submissions.length} / ${tugas.maxAttempts}`}
         </span>
       </div>
 
@@ -193,9 +236,11 @@ export default async function SiswaTugasDetailPage({
               ) : null}
               <span>·</span>
               <span>
-                {repeat
-                  ? `Percobaan ${submissions.length} (ulangi sampai lulus)`
-                  : `Sisa percobaan ${attemptsLeft}`}
+                {isMultiQuestion
+                  ? `${questions.length} soal · nilai total ${tugas.maxScore}`
+                  : repeat
+                    ? `Percobaan ${submissions.length} (ulangi sampai lulus)`
+                    : `Sisa percobaan ${attemptsLeft}`}
               </span>
             </div>
           </div>
@@ -208,6 +253,108 @@ export default async function SiswaTugasDetailPage({
         ) : null}
       </section>
 
+      {isMultiQuestion ? (
+        <section className="mt-6">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-extrabold tracking-tight text-slate-900">
+                Daftar Soal
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Kerjakan satu per satu. Setiap soal harus benar 5/5. Nilai total
+                100 jika seluruh soal selesai.
+              </p>
+            </div>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-extrabold text-emerald-700 ring-1 ring-emerald-100">
+              Nilai {totalBestScore ?? 0} / {tugas.maxScore}
+            </span>
+          </div>
+
+          <ul className="mt-4 grid gap-2.5 sm:grid-cols-2">
+            {questions.map((question) => (
+              <li key={question.id}>
+                <Link
+                  href={`/siswa/tugas/${tugas.id}/soal/${question.id}`}
+                  className={`flex h-full items-start gap-3 rounded-2xl border p-3.5 transition-colors ${
+                    question.passed
+                      ? "border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50"
+                      : "border-slate-200 bg-white hover:border-emerald-200 hover:bg-emerald-50/30"
+                  }`}
+                >
+                  <span
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-extrabold ring-1 ${
+                      question.passed
+                        ? "bg-emerald-600 text-white ring-emerald-600"
+                        : "bg-slate-100 text-slate-600 ring-slate-200"
+                    }`}
+                  >
+                    {question.orderNo}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-bold leading-snug text-slate-900">
+                      {question.title}
+                    </span>
+                    <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-semibold text-slate-500">
+                      <span>
+                        {question.passed
+                          ? "Selesai"
+                          : question.attemptsUsed > 0
+                            ? "Belum benar"
+                            : "Belum dikerjakan"}
+                      </span>
+                      <span>·</span>
+                      <span>{question.attemptsUsed} percobaan</span>
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span
+                      className={`block text-sm font-extrabold ${
+                        question.passed ? "text-emerald-700" : "text-slate-700"
+                      }`}
+                    >
+                      {question.bestScore ?? 0}/{question.maxScore}
+                    </span>
+                    <span className="mt-1 block text-[10px] font-extrabold uppercase tracking-wide text-emerald-700">
+                      {question.passed ? "Lihat" : "Kerjakan"}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+
+          {tugas.linkRequired ? (
+            <div className="mt-4">
+              <h3 className="mb-2 text-sm font-extrabold tracking-tight text-slate-900">
+                21. Bukti Pengumpulan Tautan
+              </h3>
+              <TugasLinkForm
+                tugasId={tugas.id}
+                initialUrl={link?.url ?? null}
+                disabled={closed}
+                taskMaxScore={tugas.maxScore}
+                totalQuestions={questions.length}
+              />
+            </div>
+          ) : null}
+
+          {allRequirementsPassed ? (
+            <p
+              role="status"
+              className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800"
+            >
+              Semua soal dan tautan selesai. Nilai akhir kamu {totalBestScore} /{" "}
+              {tugas.maxScore}. Tugas dinyatakan selesai.
+            </p>
+          ) : closed ? (
+            <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+              Batas waktu sudah lewat. Soal yang belum selesai tidak dapat
+              dikerjakan lagi.
+            </p>
+          ) : null}
+        </section>
+      ) : (
+        <>
       <TugasRequirements
         rules={tugas.structureRules}
         minScore={tugas.minScore}
@@ -318,6 +465,8 @@ export default async function SiswaTugasDetailPage({
           </ul>
         )}
       </section>
+        </>
+      )}
     </>
   );
 }

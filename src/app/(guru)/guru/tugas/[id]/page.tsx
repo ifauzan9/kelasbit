@@ -18,12 +18,14 @@ import { TugasGpsToggle } from "@/components/tugas/tugas-gps-toggle";
 import { AddTugasTargets } from "@/components/tugas/add-tugas-targets";
 import { RemoveTugasTargetButton } from "@/components/tugas/remove-tugas-target-button";
 import { TugasRosterTable } from "@/components/tugas/tugas-roster";
+import { TugasRequirements } from "@/components/tugas/tugas-requirements";
 import { requireUser } from "@/lib/auth/session";
 import { listSiswa } from "@/lib/guru/siswa-queries";
 import {
   getTugasForGuru,
   getTugasRoster,
   listLatestSubmissionsForTugas,
+  listTugasQuestions,
   listTugasTargets,
 } from "@/lib/tugas/queries";
 
@@ -79,6 +81,8 @@ export default async function GuruTugasDetailPage({
 
   const submissions = await listLatestSubmissionsForTugas(id);
   const roster = await getTugasRoster(id);
+  const questions = await listTugasQuestions(id);
+  const isMultiQuestion = questions.length > 0;
   const targets =
     tugas.targetType === "siswa" ? await listTugasTargets(id) : [];
   const targetIds = new Set(targets.map((target) => target.id));
@@ -142,6 +146,11 @@ export default async function GuruTugasDetailPage({
                   GPS wajib
                 </span>
               ) : null}
+              {tugas.linkRequired ? (
+                <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-sky-700 ring-1 ring-sky-100">
+                  Tautan wajib
+                </span>
+              ) : null}
               {tugas.dueAt ? (
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500">
                   <CalendarDays className="h-3 w-3 text-slate-400" />
@@ -177,10 +186,18 @@ export default async function GuruTugasDetailPage({
                 </>
               ) : null}
               <span>·</span>
-              <span>{tugas.maxAttempts} percobaan</span>
+              <span>
+                {isMultiQuestion
+                  ? `${questions.length} soal · nilai total ${tugas.maxScore}`
+                  : `${tugas.maxAttempts} percobaan`}
+              </span>
               <span>·</span>
               <span>
-                {tugas.expectedOutput.trim() ? "Auto-grade" : "Nilai manual"}
+                {isMultiQuestion
+                  ? "Auto-grade per soal"
+                  : tugas.expectedOutput.trim()
+                    ? "Auto-grade"
+                    : "Nilai manual"}
                 {tugas.structureRules?.enabled
                   ? ` · struktur ${tugas.structureWeight}%`
                   : ""}
@@ -263,6 +280,71 @@ export default async function GuruTugasDetailPage({
             />
           </div>
         ) : null}
+
+        {isMultiQuestion ? (
+          <div className="mt-3">
+            <p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-500">
+              Daftar soal ({questions.length})
+            </p>
+            <ul className="mt-2 space-y-2">
+              {questions.map((question) => (
+                <li key={question.id}>
+                  <details className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
+                    <summary className="cursor-pointer text-xs font-bold text-slate-800">
+                      Soal {question.orderNo} · {question.title}
+                      <span className="ml-2 font-semibold text-slate-400">
+                        ({question.maxScore} poin)
+                      </span>
+                    </summary>
+                    <div className="mt-3 space-y-3">
+                      {question.description.trim() ? (
+                        <p className="whitespace-pre-line text-xs leading-relaxed text-slate-600">
+                          {question.description}
+                        </p>
+                      ) : null}
+                      {question.starterCode.trim() ? (
+                        <div>
+                          <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">
+                            Starter code
+                          </p>
+                          <pre className="mt-1 max-h-48 overflow-auto whitespace-pre rounded-lg bg-slate-900 p-3 font-mono text-[11px] leading-relaxed text-slate-100">
+                            {question.starterCode}
+                          </pre>
+                        </div>
+                      ) : null}
+                      {question.expectedOutput.trim() ? (
+                        <div>
+                          <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">
+                            Output yang diharapkan
+                          </p>
+                          <pre className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-white p-3 font-mono text-[11px] text-slate-800 ring-1 ring-slate-200">
+                            {question.expectedOutput}
+                          </pre>
+                        </div>
+                      ) : null}
+                      {question.solutionCode.trim() ? (
+                        <div>
+                          <p className="text-[10px] font-extrabold uppercase tracking-wide text-emerald-600">
+                            Kunci jawaban
+                          </p>
+                          <pre className="mt-1 max-h-64 overflow-auto whitespace-pre rounded-lg bg-slate-900 p-3 font-mono text-[11px] leading-relaxed text-emerald-100">
+                            {question.solutionCode}
+                          </pre>
+                        </div>
+                      ) : null}
+                      <TugasRequirements
+                        rules={question.structureRules}
+                        minScore={question.maxScore}
+                        repeatUntilPass
+                        retryCooldownEvery={10}
+                      />
+                    </div>
+                  </details>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </section>
 
       {roster ? (
@@ -305,7 +387,11 @@ export default async function GuruTugasDetailPage({
                         {submission.userName}
                       </p>
                       <p className="mt-0.5 text-[11px] font-medium text-slate-400">
-                        Pengumpulan terakhir · Percobaan ke-{submission.attemptNo} ·{" "}
+                        {submission.questionTitle
+                          ? `${submission.questionTitle} · `
+                          : ""}
+                        Pengumpulan terakhir · Percobaan ke-
+                        {submission.attemptNo} ·{" "}
                         {submittedFormatter.format(
                           new Date(submission.submittedAt),
                         )}{" "}
@@ -323,7 +409,9 @@ export default async function GuruTugasDetailPage({
                     <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-extrabold text-slate-700">
                       {submission.score === null
                         ? "Belum dinilai"
-                        : `Nilai ${submission.score} / ${tugas.maxScore}`}
+                        : `Nilai ${submission.score} / ${
+                            isMultiQuestion ? 5 : tugas.maxScore
+                          }`}
                     </span>
                     {submission.passed !== null ? (
                       <span
@@ -353,7 +441,7 @@ export default async function GuruTugasDetailPage({
               <div className="border-t border-slate-100 p-4 sm:p-5">
                 <SubmissionDetailContent
                   submission={submission}
-                  maxScore={tugas.maxScore}
+                  maxScore={isMultiQuestion ? 5 : tugas.maxScore}
                   expectedOutput={tugas.expectedOutput}
                 />
               </div>

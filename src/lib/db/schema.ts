@@ -218,6 +218,8 @@ export const tugas = pgTable(
     manuallyClosed: boolean("manually_closed").notNull().default(false),
     /** Wajibkan GPS untuk masuk halaman tugas dan submit. */
     requireGps: boolean("require_gps").notNull().default(false),
+    /** Wajibkan siswa mengumpulkan satu tautan sebelum tugas selesai. */
+    linkRequired: boolean("link_required").notNull().default(false),
     dueAt: timestamp("due_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -305,13 +307,76 @@ export const tugasGpsPasses = pgTable(
   ],
 );
 
-/** Satu baris per percobaan pengumpulan tugas coding. */
-export const tugasSubmissions = pgTable(  "tugas_submissions",
+/** Satu baris per soal dalam tugas multi-soal. */
+export const tugasQuestions = pgTable(
+  "tugas_questions",
   {
     id: serial("id").primaryKey(),
     tugasId: integer("tugas_id")
       .notNull()
       .references(() => tugas.id, { onDelete: "cascade" }),
+    orderNo: integer("order_no").notNull(),
+    title: varchar("title", { length: 160 }).notNull(),
+    description: text("description").notNull().default(""),
+    starterCode: text("starter_code").notNull().default(""),
+    expectedOutput: text("expected_output").notNull().default(""),
+    solutionCode: text("solution_code").notNull().default(""),
+    maxScore: integer("max_score").notNull().default(5),
+    structureRules: jsonb("structure_rules").$type<TugasStructureRules | null>(),
+    structureWeight: integer("structure_weight").notNull().default(40),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("tugas_questions_tugas_order_idx").on(
+      table.tugasId,
+      table.orderNo,
+    ),
+    index("tugas_questions_tugas_idx").on(table.tugasId),
+  ],
+);
+
+/** Tautan yang wajib dikumpulkan siswa untuk menyelesaikan tugas. */
+export const tugasLinks = pgTable(
+  "tugas_links",
+  {
+    id: serial("id").primaryKey(),
+    tugasId: integer("tugas_id")
+      .notNull()
+      .references(() => tugas.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    submittedAt: timestamp("submitted_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("tugas_links_tugas_user_idx").on(table.tugasId, table.userId),
+    index("tugas_links_user_idx").on(table.userId),
+  ],
+);
+
+/** Satu baris per percobaan pengumpulan tugas coding. */
+export const tugasSubmissions = pgTable(
+  "tugas_submissions",
+  {
+    id: serial("id").primaryKey(),
+    tugasId: integer("tugas_id")
+      .notNull()
+      .references(() => tugas.id, { onDelete: "cascade" }),
+    /** null untuk tugas lama yang hanya punya satu soal. */
+    questionId: integer("question_id").references(() => tugasQuestions.id, {
+      onDelete: "cascade",
+    }),
     userId: integer("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -336,6 +401,7 @@ export const tugasSubmissions = pgTable(  "tugas_submissions",
   },
   (table) => [
     index("tugas_submissions_tugas_idx").on(table.tugasId, table.userId),
+    index("tugas_submissions_question_idx").on(table.questionId, table.userId),
     index("tugas_submissions_user_idx").on(table.userId),
   ],
 );
@@ -350,6 +416,9 @@ export type NewKelas = typeof kelas.$inferInsert;
 export type LabRunStatus = "success" | "error" | "timeout" | "stopped";
 export type LabRun = typeof labRuns.$inferSelect;
 export type Tugas = typeof tugas.$inferSelect;
+export type TugasQuestion = typeof tugasQuestions.$inferSelect;
+export type NewTugasQuestion = typeof tugasQuestions.$inferInsert;
+export type TugasLink = typeof tugasLinks.$inferSelect;
 export type TugasSubmission = typeof tugasSubmissions.$inferSelect;
 export type TugasJenis = "tugas" | "ulangan" | "remedial";
 export type TugasTargetType = "semua" | "kelas" | "siswa";
