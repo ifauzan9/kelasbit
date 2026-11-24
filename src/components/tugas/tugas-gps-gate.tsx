@@ -14,13 +14,9 @@ import {
 type Phase = "idle" | "locating" | "saving" | "error";
 type PermissionState = "unknown" | "prompt" | "granted" | "denied" | "unsupported";
 
-function getPosition(): Promise<GeolocationPosition> {
+function getPosition(options: PositionOptions): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      timeout: 10_000,
-      maximumAge: 0,
-    });
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
   });
 }
 
@@ -125,21 +121,43 @@ export function TugasGpsGate({
     let lastError: GeolocationPositionError | null = null;
 
     for (let index = 0; index < GPS_SAMPLE_COUNT; index += 1) {
-      try {
-        const position = await getPosition();
-        samples.push(position);
+      let position: GeolocationPosition | null = null;
+      let sampleError: GeolocationPositionError | null = null;
 
-        if (position.coords.accuracy <= 50) break;
-
-        if (index < GPS_SAMPLE_COUNT - 1) {
-          setMessage(
-            `Sampel ${index + 1}/${GPS_SAMPLE_COUNT} selesai. Mengambil sampel berikutnya…`,
-          );
+      for (const options of [
+        { enableHighAccuracy: true, timeout: 8_000, maximumAge: 60_000 },
+        { enableHighAccuracy: false, timeout: 8_000, maximumAge: 5 * 60_000 },
+      ]) {
+        try {
+          position = await getPosition(options);
+          break;
+        } catch (error) {
+          sampleError = error as GeolocationPositionError;
+          if (sampleError.code === sampleError.PERMISSION_DENIED) break;
         }
-      } catch (error) {
-        lastError = error as GeolocationPositionError;
+      }
 
-        if (lastError.code === lastError.PERMISSION_DENIED) break;
+      if (!position) {
+        lastError = sampleError;
+        if (
+          sampleError?.code === sampleError?.PERMISSION_DENIED ||
+          samples.length === 0
+        ) {
+          break;
+        }
+        continue;
+      }
+
+      samples.push(position);
+
+      if (position.coords.accuracy <= 50) break;
+      // Jangan ulangi sampel jika lokasi perkiraan sudah jelas di luar batas.
+      if (position.coords.accuracy > GPS_MAX_ACCURACY_METERS) break;
+
+      if (index < GPS_SAMPLE_COUNT - 1) {
+        setMessage(
+          `Sampel ${index + 1}/${GPS_SAMPLE_COUNT} selesai. Mengambil sampel berikutnya…`,
+        );
       }
     }
 
@@ -295,8 +313,11 @@ export function TugasGpsGate({
             <p className="min-w-0 break-words">
               Jika browser menampilkan pilihan{" "}
               <strong>Perkiraan/Presisi</strong>, pilih{" "}
-              <strong>Presisi (Precise Location)</strong>. Jika akurasi masih
-              di luar batas, minta kode pass dari guru.
+              <strong>Presisi (Precise Location)</strong> untuk hasil terbaik.
+              Jika memilih <strong>Perkiraan</strong>, sistem tetap mencoba
+              lokasi jaringan, tetapi akurasi harus tetap maksimal{" "}
+              {GPS_MAX_ACCURACY_METERS} meter. Jika masih di luar batas, minta
+              kode pass dari guru.
             </p>
           </div>
         </div>

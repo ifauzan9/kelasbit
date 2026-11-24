@@ -773,6 +773,9 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
       tugas; ini menghindari gate macet di tulisan “Membuka tugas…” akibat
       `router.refresh()` yang tidak ter-commit di React 19.2 (uji token 9A
       `SZU-FUU`, lokasi ±20 m, halaman tugas berhasil terbuka);
+    - pengambilan lokasi memakai **fallback low-accuracy** jika GPS presisi
+      timeout, plus cache lokasi maksimal 5 menit; pilihan **Perkiraan** pada
+      dialog browser tidak langsung gagal, tetapi akurasi tetap wajib ≤500 m;
     - reset pekerjaan menghapus riwayat lokasi siswa untuk tugas tersebut.
   - **Kode pass GPS** (migration additif
     `0019_careless_silk_fever.sql`):
@@ -903,6 +906,10 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   panel **“GPS tidak akurat atau ingin reset izin?”** berisi panduan Chrome
   Android, Safari iPhone, Chrome/Edge desktop, dan Firefox. Kotak info
   Perkiraan/Presisi diperbaiki agar teks membungkus normal. Data uji dihapus.
+- Status uji GPS perkiraan (24 November 2026): dengan token 9A `SZU-FUU`,
+  permintaan high-accuracy disimulasikan timeout lalu fallback low-accuracy
+  berhasil (±120 m); lokasi tersimpan dan halaman tugas langsung terbuka.
+  Pengaturan token, target, dan `require_gps` lokal dikembalikan setelah uji.
 - Status uji export Excel (22 November 2026): route guru menghasilkan
   `progres-tugas-<id>.xlsx` (200) dengan sheet `Progres Tugas`, ringkasan
   target/KKM, serta baris lulus, belum lulus, dan belum mengerjakan; tanpa
