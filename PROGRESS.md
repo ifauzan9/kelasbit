@@ -757,6 +757,10 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
       di halaman detail siswa `/guru/siswa/<id>`;
     - gate GPS responsif di HP, menampilkan status izin browser dan panduan
       reset izin per Chrome Android, Safari iPhone, Chrome/Edge, dan Firefox;
+    - setelah lokasi tersimpan, halaman melakukan **reload penuh** untuk membuka
+      tugas; ini menghindari gate macet di tulisan “Membuka tugas…” akibat
+      `router.refresh()` yang tidak ter-commit di React 19.2 (uji token 9A
+      `SZU-FUU`, lokasi ±20 m, halaman tugas berhasil terbuka);
     - reset pekerjaan menghapus riwayat lokasi siswa untuk tugas tersebut.
   - **Kode pass GPS** (migration additif
     `0019_careless_silk_fever.sql`):

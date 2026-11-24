@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { AlertCircle, MapPin, ShieldCheck } from "@/components/icons";
 import type { LoginLocationStatus } from "@/lib/auth/geolocation";
 import {
@@ -32,7 +31,6 @@ export function TugasGpsGate({
   tugasId: number;
   tugasTitle: string;
 }) {
-  const router = useRouter();
   const [phase, setPhase] = useState<Phase>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [code, setCode] = useState("");
@@ -84,6 +82,17 @@ export function TugasGpsGate({
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Muat ulang halaman setelah lokasi/kode pass tersimpan.
+   *
+   * `router.refresh()` pernah macet di perangkat mobile (React 19.2) sehingga
+   * gate tetap menampilkan "Membuka tugas..." walaupun server sudah punya
+   * lokasi valid. Reload penuh memastikan halaman tugas benar-benar dirender.
+   */
+  function reloadToTask(delayMs = 250) {
+    window.setTimeout(() => window.location.reload(), delayMs);
   }
 
   async function requestGps() {
@@ -201,7 +210,7 @@ export function TugasGpsGate({
     setMessage(
       `Lokasi tersimpan (${accuracyLabel}${tierLabel ? ` · ${tierLabel}` : ""}). Membuka tugas…`,
     );
-    router.refresh();
+    reloadToTask();
   }
 
   async function usePass() {
@@ -226,7 +235,7 @@ export function TugasGpsGate({
       }
 
       setCodeMessage("Kode diterima. Membuka tugas…");
-      router.refresh();
+      reloadToTask();
     } catch {
       setCodeMessage("Gagal memeriksa kode. Coba lagi.");
     } finally {
