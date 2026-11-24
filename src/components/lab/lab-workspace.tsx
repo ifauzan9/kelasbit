@@ -8,6 +8,7 @@ import {
   CodeXml,
   Play,
   RotateCcw,
+  Save,
   Square,
 } from "@/components/icons";
 import { ConsolePanel } from "@/components/lab/console-panel";
@@ -93,6 +94,7 @@ export function LabWorkspace({
   );
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [savingRun, setSavingRun] = useState(false);
   const [exampleId, setExampleId] = useState(LAB_EXAMPLES[0].id);
   const [pendingPrompt, setPendingPrompt] = useState<PendingPrompt | null>(null);
 
@@ -125,9 +127,12 @@ export function LabWorkspace({
   }, []);
 
   const persistRun = useCallback(
-    async (status: LabRunStatus, duration: number | null) => {
+    async (
+      status: LabRunStatus,
+      duration: number | null,
+    ): Promise<boolean> => {
       const active = activeRunRef.current;
-      if (!active) return;
+      if (!active) return false;
 
       const result = await saveLabRun({
         code: active.code,
@@ -140,7 +145,7 @@ export function LabWorkspace({
 
       if (!result.ok) {
         setNotice(result.error);
-        return;
+        return false;
       }
 
       setRuns((previous) =>
@@ -150,9 +155,28 @@ export function LabWorkspace({
         ].slice(0, HISTORY_LIMIT),
       );
       setActiveRunId(result.run.id);
+      return true;
     },
     [],
   );
+
+  async function handleSaveRun() {
+    if (
+      runningRef.current ||
+      savingRun ||
+      activeRunId !== null ||
+      runStatus === null ||
+      !activeRunRef.current
+    ) {
+      return;
+    }
+
+    setSavingRun(true);
+    setNotice(null);
+    const saved = await persistRun(runStatus, durationMs);
+    setSavingRun(false);
+    if (saved) setNotice("Riwayat berhasil disimpan.");
+  }
 
   const createWorker = useCallback(() => {
     workerRef.current?.terminate();
@@ -189,7 +213,6 @@ export function LabWorkspace({
         };
         setStdout(data.stdout);
         setStderr(data.stderr);
-        void persistRun(data.status, data.durationMs);
         return;
       }
 
@@ -213,7 +236,7 @@ export function LabWorkspace({
     };
 
     workerRef.current = worker;
-  }, [clearTimeoutRef, persistRun]);
+  }, [clearTimeoutRef]);
 
   const startTimeout = useCallback(() => {
     clearTimeoutRef();
@@ -228,10 +251,9 @@ export function LabWorkspace({
         "stderr",
         "\nWaktu eksekusi melebihi 5 detik. Program dihentikan.\n",
       );
-      void persistRun("timeout", RUN_TIMEOUT_MS);
       createWorker();
     }, RUN_TIMEOUT_MS);
-  }, [appendOutput, clearTimeoutRef, createWorker, persistRun]);
+  }, [appendOutput, clearTimeoutRef, createWorker]);
 
   const finishInterruptedRun = useCallback(
     (status: "timeout" | "stopped", message: string) => {
@@ -248,10 +270,9 @@ export function LabWorkspace({
       );
       setDurationMs(duration);
       appendOutput("stderr", `\n${message}\n`);
-      void persistRun(status, duration);
       createWorker();
     },
-    [appendOutput, clearTimeoutRef, createWorker, persistRun],
+    [appendOutput, clearTimeoutRef, createWorker],
   );
 
   const handleRun = useCallback(() => {
@@ -314,11 +335,10 @@ export function LabWorkspace({
     );
     setDurationMs(duration);
     appendOutput("stderr", "\nProgram dibatalkan saat meminta input.\n");
-    void persistRun("stopped", duration);
 
     workerRef.current?.terminate();
     createWorker();
-  }, [appendOutput, clearTimeoutRef, createWorker, persistRun]);
+  }, [appendOutput, clearTimeoutRef, createWorker]);
 
   const handleStop = useCallback(() => {
     finishInterruptedRun("stopped", "Eksekusi dihentikan oleh pengguna.");
@@ -377,6 +397,9 @@ export function LabWorkspace({
     setExampleId(id);
     setCode(example.code);
     setActiveRunId(null);
+    activeRunRef.current = null;
+    setRunStatus(null);
+    setDurationMs(null);
     setNotice(null);
   }
 
@@ -384,6 +407,7 @@ export function LabWorkspace({
     const example = findLabExample(exampleId) ?? LAB_EXAMPLES[0];
     setCode(example.code);
     setActiveRunId(null);
+    activeRunRef.current = null;
     handleClear();
   }
 
@@ -460,6 +484,24 @@ export function LabWorkspace({
         </span>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleSaveRun}
+            disabled={
+              running ||
+              savingRun ||
+              activeRunId !== null ||
+              runStatus === null
+            }
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Save className="h-3.5 w-3.5" />
+            {savingRun
+              ? "Menyimpan…"
+              : activeRunId !== null
+                ? "Tersimpan"
+                : "Simpan Riwayat"}
+          </button>
           <button
             type="button"
             onClick={handleReset}
@@ -554,8 +596,9 @@ export function LabWorkspace({
 
       <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-400">
         <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
-        Setiap Run otomatis disimpan ke riwayat. Python berjalan di browser —
-        kode tidak dikirim ke server.
+        Run tidak disimpan otomatis. Klik <span className="font-bold text-slate-500">Simpan Riwayat</span>{" "}
+        untuk menyimpan hasil Run terakhir. Python berjalan di browser — kode
+        tidak dieksekusi di server.
       </p>
 
       {runtime === "error" ? (

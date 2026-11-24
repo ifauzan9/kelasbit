@@ -14,6 +14,7 @@ import { SubmissionDetailContent } from "@/components/tugas/submission-detail";
 import { SubmissionDetails } from "@/components/tugas/submission-details";
 import { TugasCopyPasteToggle } from "@/components/tugas/copy-paste-toggle";
 import { TugasCloseToggle } from "@/components/tugas/tugas-close-toggle";
+import { TugasDeadlineForm } from "@/components/tugas/tugas-deadline-form";
 import { TugasGpsToggle } from "@/components/tugas/tugas-gps-toggle";
 import { AddTugasTargets } from "@/components/tugas/add-tugas-targets";
 import { RemoveTugasTargetButton } from "@/components/tugas/remove-tugas-target-button";
@@ -21,6 +22,7 @@ import { TugasRosterTable } from "@/components/tugas/tugas-roster";
 import { TugasRequirements } from "@/components/tugas/tugas-requirements";
 import { requireUser } from "@/lib/auth/session";
 import { listSiswa } from "@/lib/guru/siswa-queries";
+import { toJakartaDateTimeInput } from "@/lib/settings/maintenance";
 import {
   getTugasForGuru,
   getTugasRoster,
@@ -213,6 +215,12 @@ export default async function GuruTugasDetailPage({
         ) : null}
 
         <div className="mt-3 space-y-2">
+          <TugasDeadlineForm
+            tugasId={tugas.id}
+            initialDueAt={
+              tugas.dueAt ? toJakartaDateTimeInput(new Date(tugas.dueAt)) : ""
+            }
+          />
           <TugasCloseToggle
             tugasId={tugas.id}
             initialClosed={tugas.manuallyClosed}

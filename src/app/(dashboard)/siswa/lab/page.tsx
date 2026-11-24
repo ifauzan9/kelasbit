@@ -36,8 +36,8 @@ export default async function LabCodingPage() {
             </h1>
             <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/70">
               Editor Python lengkap dengan console dan input program. Kode
-              berjalan di browser, lalu setiap Run otomatis tersimpan ke
-              riwayatmu.
+              berjalan di browser. Run tidak disimpan otomatis; gunakan tombol
+              Simpan Riwayat untuk menyimpan hasil coding.
             </p>
           </div>
 

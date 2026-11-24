@@ -535,8 +535,9 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   - timer 5 detik dijeda selama modal terbuka; jawaban kosong diperbolehkan.
 - **Run** (Ctrl/Cmd+Enter) dan **Stop**; timeout 5 detik → worker dihentikan,
   status `timeout`, Pyodide dimuat ulang otomatis.
-- Setiap Run disimpan ke tabel **`lab_runs`** (migration `0011_easy_killer_shrike.sql`,
-  additive):
+- **Run tidak disimpan otomatis** (optimasi beban server): hasil Run tetap di
+  browser sampai siswa menekan **Simpan Riwayat**. Tombol ini menyimpan ke tabel
+  **`lab_runs`** (migration `0011_easy_killer_shrike.sql`, additive):
   - kolom `user_id`, `code`, `stdin`, `stdout`, `stderr`, `status`
     (`success`/`error`/`timeout`/`stopped`), `duration_ms`, `created_at`;
   - maksimal **50 run per siswa** (run lama dipangkas);
@@ -545,6 +546,8 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   (jawaban input tersimpan di kolom `stdin` sebagai catatan); saat di-Run lagi,
   input **ditanyakan ulang dari awal**. Setiap item bisa dihapus dengan konfirmasi.
 - Draft kode editor disimpan di `localStorage` agar tidak hilang saat refresh.
+- Info di halaman Lab menjelaskan bahwa Run tidak disimpan otomatis dan hasil
+  terakhir disimpan lewat tombol **Simpan Riwayat**.
 - File utama: `src/app/(dashboard)/siswa/lab/page.tsx`,
   `src/components/lab/*` (termasuk `input-prompt-dialog.tsx`),
   `src/lib/lab/actions.ts`, `src/lib/lab/queries.ts`,
@@ -554,11 +557,18 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   `public/pyodide/`.
 - Status uji (20 November 2026): `print` + `input()` menampilkan modal prompt
   tanpa menuliskan prompt/jawaban ke console; dua input berurutan muncul
-  bergantian; kode error menyimpan status `error` + traceback; infinite loop
-  berhenti ±5 detik dan tersimpan `timeout`; Stop & Batal saat modal menyimpan
-  `stopped`; riwayat menyimpan jawaban, dan re-run menanyakan input lagi;
-  tampilan desktop & mobile dicek. Data uji dihapus. `tsc --noEmit` dan ESLint
-  bersih.
+  bergantian; kode error menampilkan traceback; infinite loop berhenti ±5 detik;
+  Stop & Batal saat modal menampilkan status `stopped`; pada uji 24 November
+  2026 Run tidak menulis `lab_runs`, lalu **Simpan Riwayat** menyimpan tepat 1
+  baris; riwayat menyimpan jawaban, dan re-run menanyakan input lagi; tampilan
+  desktop & mobile dicek. Data uji dihapus. `tsc --noEmit` dan ESLint bersih.
+- Status uji remedial (24 November 2026): tugas
+  **Remedial: Bukti Peminjaman Alat Laboratorium** dibuka sementara untuk akun
+  demo, solusi resmi dijalankan dengan input `Dimas / IX B / Mikroskop`, lalu
+  mendapat **100/100** (output 60 + struktur 40), **0 checklist gagal**,
+  percobaan ke-1, status **Lulus**, dan riwayat tampil. Submission/target uji
+  dihapus; deadline, GPS, dan kunci copy/paste tugas dikembalikan ke pengaturan
+  semula.
 
 ### Tugas coding (tugas / ulangan / remedial)
 
@@ -599,6 +609,13 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
     tombol **Tambah siswa** yang sudah ada;
   - detail guru menampilkan daftar 20 soal (instruksi, output, kunci, aturan),
     link siswa di roster, reset pekerjaan, dan export Excel nilai total;
+  - guru dapat **mengatur ulang deadline** tugas yang sudah dibuat dari detail
+    tugas: input `datetime-local` WIB, tombol **Simpan deadline**, dan tombol
+    **Kosongkan** untuk menghapus batas waktu; deadline baru harus setelah
+    waktu sekarang;
+  - optimasi beban server: daftar tugas hanya mengambil **count soal**, bukan
+    seluruh isi soal; roster guru memakai agregasi SQL (**attempt, best score,
+    nilai per soal**) sehingga tidak memuat semua riwayat submission ke aplikasi;
   - modal **Lihat jawaban** pada tugas multi-soal memuat **semua soal**:
     jawaban terbaru per soal, nilai terbaik, status, jumlah percobaan, tautan
     pengumpulan, dan form nilai manual tiap soal; soal yang belum dikerjakan
@@ -606,12 +623,17 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   - data 20 soal disimpan di `scripts/seed-pengganti-uprak.ts`; versi SQL untuk
     produksi ada di `scripts/seed-pengganti-uprak.sql` (jalankan setelah
     migration `0020` + `0021` dan backup DB);
-  - status uji lokal: soal **1–20** pernah diuji lewat UI; setelah soal 1–5
-    disederhanakan, **soal 1–5 diuji ulang lewat UI dan semuanya 5/5**; soal 20
-    disubmit tanpa tautan → tidak final; setelah tautan dikumpulkan → modal
-    final **100/100**; tautan tersimpan di `tugas_links`; uji anti-hardcode
-    pada soal 1 menghasilkan **0/5** serta tidak lulus; tidak ditemukan bug
-    penilaian. Data uji sudah dihapus dan target dikosongkan kembali.
+  - status uji lokal: login siswa berhasil; 20 soal dikerjakan lewat UI dan
+    semuanya **5/5**; saat baru **19/20** nilai **95/100** dan belum final;
+    saat **20/20 tetapi tautan belum** juga belum final; setelah tautan
+    dikumpulkan → modal final **100/100**, daftar soal **20/20 + tautan
+    terkumpul**, dan kartu tugas berstatus **Lulus**; tidak ada checklist
+    struktur yang gagal; uji anti-hardcode soal 1 menghasilkan **0/5**; data
+    uji dihapus dan target user demo dikosongkan kembali.
+  - status uji deadline (24 November 2026): deadline tugas diubah dari
+    **30 Nov 2026 23:59** menjadi **1 Des 2026 23:59 WIB**; header langsung
+    berubah dan data DB tersimpan; deadline dikembalikan ke **30 Nov 2026
+    23:59 WIB** setelah uji.
 
 - Menu **Tugas** aktif untuk guru & siswa:
   - guru: `/guru/tugas` (buat & daftar) dan `/guru/tugas/<id>` (pengumpulan + nilai);

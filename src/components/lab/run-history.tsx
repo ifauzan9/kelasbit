@@ -61,8 +61,8 @@ export function RunHistory({
 
       {runs.length === 0 ? (
         <p className="px-4 py-5 text-xs leading-relaxed text-slate-400">
-          Belum ada riwayat. Setiap kali menekan Run, kode dan hasilnya otomatis
-          tersimpan di sini.
+          Belum ada riwayat. Setelah Run selesai, klik <span className="font-bold text-slate-500">Simpan Riwayat</span>{" "}
+          untuk menyimpan kode dan hasilnya di sini.
         </p>
       ) : (
         <ul className="max-h-[320px] divide-y divide-slate-100 overflow-y-auto">

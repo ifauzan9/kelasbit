@@ -1148,6 +1148,56 @@ export async function setTugasManuallyClosed(input: {
   }
 }
 
+export type TugasDeadlineResult = {
+  ok: boolean;
+  error?: string;
+};
+
+/** Atur ulang atau hapus deadline tugas yang sudah dibuat. */
+export async function setTugasDeadline(input: {
+  tugasId: number;
+  dueAt: string;
+}): Promise<TugasDeadlineResult> {
+  await requireUser("guru");
+
+  if (!Number.isInteger(input.tugasId) || input.tugasId <= 0) {
+    return { ok: false, error: "Tugas tidak valid." };
+  }
+
+  const raw = input.dueAt.trim();
+  let dueAt: Date | null = null;
+
+  if (raw) {
+    dueAt = parseJakartaDateTime(raw);
+    if (!dueAt) {
+      return { ok: false, error: "Format batas waktu tidak valid." };
+    }
+    if (dueAt.getTime() <= Date.now()) {
+      return {
+        ok: false,
+        error: "Batas waktu harus setelah waktu sekarang (WIB).",
+      };
+    }
+  }
+
+  try {
+    const updated = await getDb()
+      .update(tugas)
+      .set({ dueAt, updatedAt: new Date() })
+      .where(eq(tugas.id, input.tugasId))
+      .returning({ id: tugas.id });
+
+    if (updated.length === 0) {
+      return { ok: false, error: "Tugas tidak ditemukan." };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error("tugas: gagal mengubah deadline", error);
+    return { ok: false, error: "Gagal menyimpan deadline. Coba lagi." };
+  }
+}
+
 export type TugasGpsResult = {
   ok: boolean;
   error?: string;

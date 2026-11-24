@@ -169,21 +169,42 @@ async function targetCountMapFor(ids: number[]): Promise<Map<number, number>> {
   return new Map(rows.map((row) => [row.tugasId, row.total]));
 }
 
-async function questionRowsForTugasIds(
+async function questionCountMapFor(
   ids: number[],
-): Promise<Map<number, TugasQuestionView[]>> {
+): Promise<Map<number, number>> {
   if (ids.length === 0) return new Map();
 
   const rows = await getDb()
-    .select()
+    .select({
+      tugasId: tugasQuestions.tugasId,
+      total: sql<number>`count(*)::int`,
+    })
+    .from(tugasQuestions)
+    .where(inArray(tugasQuestions.tugasId, ids))
+    .groupBy(tugasQuestions.tugasId);
+
+  return new Map(rows.map((row) => [row.tugasId, row.total]));
+}
+
+async function questionSummaryForTugasIds(
+  ids: number[],
+): Promise<Map<number, { id: number; maxScore: number }[]>> {
+  if (ids.length === 0) return new Map();
+
+  const rows = await getDb()
+    .select({
+      id: tugasQuestions.id,
+      tugasId: tugasQuestions.tugasId,
+      maxScore: tugasQuestions.maxScore,
+    })
     .from(tugasQuestions)
     .where(inArray(tugasQuestions.tugasId, ids))
     .orderBy(tugasQuestions.tugasId, tugasQuestions.orderNo);
 
-  const byTugas = new Map<number, TugasQuestionView[]>();
+  const byTugas = new Map<number, { id: number; maxScore: number }[]>();
   for (const row of rows) {
     const list = byTugas.get(row.tugasId) ?? [];
-    list.push(toQuestionView(row));
+    list.push({ id: row.id, maxScore: row.maxScore });
     byTugas.set(row.tugasId, list);
   }
   return byTugas;
@@ -214,14 +235,14 @@ export async function listTugasForGuru(): Promise<TugasView[]> {
 
   const counts = await countMapFor(rows.map((row) => row.id));
   const targetCounts = await targetCountMapFor(rows.map((row) => row.id));
-  const questions = await questionRowsForTugasIds(rows.map((row) => row.id));
+  const questionCounts = await questionCountMapFor(rows.map((row) => row.id));
 
   return rows.map((row) =>
     toView(
       row,
       counts.get(row.id) ?? 0,
       targetCounts.get(row.id) ?? 0,
-      questions.get(row.id)?.length ?? 0,
+      questionCounts.get(row.id) ?? 0,
     ),
   );
 }
@@ -240,12 +261,12 @@ export async function getTugasForGuru(id: number): Promise<TugasView | null> {
 
   const counts = await countMapFor([row.id]);
   const targetCounts = await targetCountMapFor([row.id]);
-  const questions = await questionRowsForTugasIds([row.id]);
+  const questionCounts = await questionCountMapFor([row.id]);
   return toView(
     row,
     counts.get(row.id) ?? 0,
     targetCounts.get(row.id) ?? 0,
-    questions.get(row.id)?.length ?? 0,
+    questionCounts.get(row.id) ?? 0,
   );
 }
 
@@ -613,37 +634,66 @@ export async function getTugasRoster(
       .orderBy(users.name);
   }
 
-  const rawSubmissions = await getDb()
-    .select({
-      userId: tugasSubmissions.userId,
-      questionId: tugasSubmissions.questionId,
-      score: tugasSubmissions.score,
-      passed: tugasSubmissions.passed,
-      submittedAt: tugasSubmissions.submittedAt,
-    })
-    .from(tugasSubmissions)
-    .where(eq(tugasSubmissions.tugasId, tugasId))
-    .orderBy(desc(tugasSubmissions.submittedAt), desc(tugasSubmissions.id));
+  const [attemptResult, latestResult, bestQuestionResult] = await Promise.all([
+    getDb().execute(sql`
+      select
+        user_id,
+        count(*)::int as attempts,
+        bool_or(passed) as passed_any,
+        max(score)::int as best_score
+      from tugas_submissions
+      where tugas_id = ${tugasId}
+      group by user_id
+    `),
+    getDb().execute(sql`
+      select distinct on (user_id)
+        user_id, score, passed, submitted_at
+      from tugas_submissions
+      where tugas_id = ${tugasId}
+      order by user_id, submitted_at desc, id desc
+    `),
+    getDb().execute(sql`
+      select
+        user_id,
+        question_id,
+        max(score)::int as best_score
+      from tugas_submissions
+      where tugas_id = ${tugasId} and question_id is not null
+      group by user_id, question_id
+    `),
+  ]);
 
-  const byUser = new Map<
-    number,
-    {
-      questionId: number | null;
-      score: number | null;
-      passed: boolean | null;
-      submittedAt: Date;
-    }[]
-  >();
+  const attemptRows = attemptResult.rows as {
+    user_id: number;
+    attempts: number;
+    passed_any: boolean | null;
+    best_score: number | null;
+  }[];
+  const latestRows = latestResult.rows as {
+    user_id: number;
+    score: number | null;
+    passed: boolean | null;
+    submitted_at: Date;
+  }[];
+  const bestQuestionRows = bestQuestionResult.rows as {
+    user_id: number;
+    question_id: number;
+    best_score: number | null;
+  }[];
 
-  for (const submission of rawSubmissions) {
-    const list = byUser.get(submission.userId) ?? [];
-    list.push({
-      questionId: submission.questionId,
-      score: submission.score,
-      passed: submission.passed,
-      submittedAt: submission.submittedAt,
-    });
-    byUser.set(submission.userId, list);
+  const attemptsByUser = new Map(
+    attemptRows.map((row) => [row.user_id, row]),
+  );
+  const latestByUser = new Map(
+    latestRows.map((row) => [row.user_id, row]),
+  );
+  const bestByUserQuestion = new Map<number, Map<number, number>>();
+  for (const row of bestQuestionRows) {
+    if (row.best_score === null) continue;
+    const byQuestion =
+      bestByUserQuestion.get(row.user_id) ?? new Map<number, number>();
+    byQuestion.set(row.question_id, row.best_score);
+    bestByUserQuestion.set(row.user_id, byQuestion);
   }
 
   const latestLocations = await latestLocationsForTugas(tugasId);
@@ -651,27 +701,18 @@ export async function getTugasRoster(
   const linksByUser = await linkMapForTugas(tugasId);
 
   const rows: TugasRosterRow[] = students.map((student) => {
-    const mine = byUser.get(student.id) ?? [];
-    const attempts = mine.length;
-    const latest = mine[0] ?? null;
+    const attempt = attemptsByUser.get(student.id);
+    const attempts = attempt?.attempts ?? 0;
+    const latest = latestByUser.get(student.id) ?? null;
     const link = linksByUser.get(student.id) ?? null;
     const linkSubmitted = !assignment.linkRequired || Boolean(link);
-    const scores = mine
-      .map((item) => item.score)
-      .filter((value): value is number => typeof value === "number");
-    const bestScore = scores.length > 0 ? Math.max(...scores) : null;
+    const bestScore = attempt?.best_score ?? null;
 
     let totalBest = 0;
     let allQuestionsPassed = false;
     if (isMultiQuestion) {
-      const bestByQuestion = new Map<number, number>();
-      for (const item of mine) {
-        if (item.questionId === null || item.score === null) continue;
-        const current = bestByQuestion.get(item.questionId);
-        if (current === undefined || item.score > current) {
-          bestByQuestion.set(item.questionId, item.score);
-        }
-      }
+      const bestByQuestion =
+        bestByUserQuestion.get(student.id) ?? new Map<number, number>();
       allQuestionsPassed = [...questionMaxById].every(
         ([questionId, maxScore]) =>
           (bestByQuestion.get(questionId) ?? 0) >= maxScore,
@@ -692,7 +733,7 @@ export async function getTugasRoster(
         : null
       : assignment.minScore !== null
         ? attempts > 0
-          ? mine.some((item) => item.passed === true) && linkSubmitted
+          ? attempt?.passed_any === true && linkSubmitted
           : null
         : null;
 
@@ -726,7 +767,7 @@ export async function getTugasRoster(
         : bestScore,
       passed,
       lastSubmittedAt: latest
-        ? latest.submittedAt.toISOString()
+        ? new Date(latest.submitted_at).toISOString()
         : null,
       status,
       latestLocation: latestLocations.get(student.id) ?? null,
@@ -807,7 +848,7 @@ export async function listTugasForSiswa(): Promise<TugasSiswaView[]> {
     list.push(submission);
     byTugas.set(submission.tugasId, list);
   }
-  const questionsByTugas = await questionRowsForTugasIds(ids);
+  const questionsByTugas = await questionSummaryForTugasIds(ids);
   const linksByTugas = await linkMapForUser(user.id, ids);
 
   const now = Date.now();
