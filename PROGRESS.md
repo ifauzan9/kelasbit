@@ -623,6 +623,11 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
   - data 20 soal disimpan di `scripts/seed-pengganti-uprak.ts`; versi SQL untuk
     produksi ada di `scripts/seed-pengganti-uprak.sql` (jalankan setelah
     migration `0020` + `0021` dan backup DB);
+  - **penilaian output strict**: output harus sama persis (huruf, tanda baca,
+    spasi awal/tengah/akhir baris); output yang berbeda tidak mendapat poin
+    output sama sekali. Struktur wajib (jumlah input, variabel input, variabel
+    nilai tetap, semua variabel dipakai di print, tanpa loop/if) tetap memblokir
+    kelulusan;
   - status uji lokal: login siswa berhasil; 20 soal dikerjakan lewat UI dan
     semuanya **5/5**; saat baru **19/20** nilai **95/100** dan belum final;
     saat **20/20 tetapi tautan belum** juga belum final; setelah tautan
@@ -634,6 +639,13 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
     **30 Nov 2026 23:59** menjadi **1 Des 2026 23:59 WIB**; header langsung
     berubah dan data DB tersimpan; deadline dikembalikan ke **30 Nov 2026
     23:59 WIB** setelah uji.
+  - status uji strict output (24 November 2026): soal 1 dengan satu huruf
+    hilang (`Terima kasi`) mendapat **2/5** dan modal **Belum benar**; setelah
+    diperbaiki menjadi `Terima kasih` mendapat **5/5**. Seluruh **20 soal**
+    diuji dengan output typo (huruf terakhir judul dihapus): semuanya **2/5,
+    belum benar**; seluruh 20 soal dengan output exact: semuanya **5/5**.
+    Database uji berisi 20 submission typo (`passed=false`) dan 20 submission
+    exact (`passed=true`), dengan 0 checklist struktur gagal; data uji dihapus.
 
 - Menu **Tugas** aktif untuk guru & siswa:
   - guru: `/guru/tugas` (buat & daftar) dan `/guru/tugas/<id>` (pengumpulan + nilai);

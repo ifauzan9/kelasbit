@@ -85,7 +85,7 @@ export function computeAutoGrade(input: {
     !criticalFailed
   ) {
     const output = scoreOutput(input.expectedOutput, input.stdout);
-    outputScore = Math.round(outputMax * output.ratio);
+    outputScore = output.exact ? outputMax : 0;
   }
 
   const scoredChecks = checks.filter((check) => check.scored !== false);

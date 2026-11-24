@@ -52,7 +52,7 @@ export function TugasRequirements({
     );
   }
   programRules.push(
-    "Spasi antarkata dan spasi awal baris diperhitungkan; spasi akhir baris diabaikan",
+    "Output harus sama persis: huruf, tanda baca, spasi awal, spasi antarkata, dan spasi akhir baris diperhitungkan",
   );
   if (hasInputs) {
     programRules.push(
