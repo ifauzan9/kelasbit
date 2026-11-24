@@ -158,3 +158,26 @@ export type TugasRoster = {
   inactiveCount: number;
   hasKkm: boolean;
 };
+
+export type TugasStudentAnswerEntry = {
+  questionId: number;
+  orderNo: number;
+  title: string;
+  maxScore: number;
+  expectedOutput: string;
+  attempts: number;
+  bestScore: number | null;
+  passed: boolean;
+  latestSubmission: TugasSubmissionView | null;
+};
+
+export type TugasStudentAnswers = {
+  userId: number;
+  userName: string;
+  totalScore: number;
+  maxScore: number;
+  questionCount: number;
+  solvedCount: number;
+  link: TugasLinkView | null;
+  answers: TugasStudentAnswerEntry[];
+};

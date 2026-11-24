@@ -26,6 +26,8 @@ import type {
   TugasRoster,
   TugasRosterRow,
   TugasSiswaView,
+  TugasStudentAnswerEntry,
+  TugasStudentAnswers,
   TugasSubmissionView,
   TugasView,
 } from "@/lib/tugas/types";
@@ -981,6 +983,104 @@ export async function getTugasForSiswa(tugasId: number): Promise<{
     gpsBypassActive,
     userId: user.id,
     link,
+  };
+}
+
+export async function listTugasStudentAnswers(
+  tugasId: number,
+  userId: number,
+): Promise<TugasStudentAnswers | null> {
+  await requireUser("guru");
+
+  const [assignment] = await getDb()
+    .select({ id: tugas.id, maxScore: tugas.maxScore })
+    .from(tugas)
+    .where(eq(tugas.id, tugasId))
+    .limit(1);
+
+  if (!assignment) return null;
+
+  const [student] = await getDb()
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(and(eq(users.id, userId), eq(users.role, "siswa")))
+    .limit(1);
+
+  if (!student) return null;
+
+  const [questions, submissions, link] = await Promise.all([
+    getDb()
+      .select()
+      .from(tugasQuestions)
+      .where(eq(tugasQuestions.tugasId, tugasId))
+      .orderBy(tugasQuestions.orderNo),
+    getDb()
+      .select()
+      .from(tugasSubmissions)
+      .where(
+        and(
+          eq(tugasSubmissions.tugasId, tugasId),
+          eq(tugasSubmissions.userId, userId),
+        ),
+      )
+      .orderBy(desc(tugasSubmissions.submittedAt), desc(tugasSubmissions.id)),
+    getTugasLink(tugasId, userId),
+  ]);
+
+  const byQuestion = new Map<number, typeof submissions>();
+  for (const submission of submissions) {
+    if (submission.questionId === null) continue;
+    const list = byQuestion.get(submission.questionId) ?? [];
+    list.push(submission);
+    byQuestion.set(submission.questionId, list);
+  }
+
+  const questionTitleById = new Map(
+    questions.map((question) => [question.id, question.title]),
+  );
+
+  let totalScore = 0;
+  let solvedCount = 0;
+
+  const answers: TugasStudentAnswerEntry[] = questions.map((question) => {
+    const mine = byQuestion.get(question.id) ?? [];
+    const scores = mine
+      .map((submission) => submission.score)
+      .filter((value): value is number => typeof value === "number");
+    const bestScore = scores.length > 0 ? Math.max(...scores) : null;
+    const passed = bestScore !== null && bestScore >= question.maxScore;
+    if (bestScore !== null) totalScore += bestScore;
+    if (passed) solvedCount += 1;
+
+    const latest = mine[0] ?? null;
+    return {
+      questionId: question.id,
+      orderNo: question.orderNo,
+      title: question.title,
+      maxScore: question.maxScore,
+      expectedOutput: question.expectedOutput,
+      attempts: mine.length,
+      bestScore,
+      passed,
+      latestSubmission: latest
+        ? toSubmissionView({
+            ...latest,
+            userName: student.name,
+            questionTitle: questionTitleById.get(question.id) ?? null,
+          })
+        : null,
+    };
+  });
+
+  return {
+    userId: student.id,
+    userName: student.name,
+    totalScore: Math.min(assignment.maxScore, totalScore),
+    maxScore: assignment.maxScore,
+    questionCount: questions.length,
+    solvedCount,
+    link,
+    answers,
   };
 }
 

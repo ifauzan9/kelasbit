@@ -19,6 +19,8 @@ import {
   type TugasTargetType,
 } from "@/lib/db/schema";
 import { computeAutoGrade } from "@/lib/tugas/grading";
+import { listTugasStudentAnswers } from "@/lib/tugas/queries";
+import type { TugasStudentAnswers } from "@/lib/tugas/types";
 import {
   DEFAULT_STRUCTURE_WEIGHT,
   RETRY_COOLDOWN_EVERY,
@@ -956,6 +958,31 @@ export async function gradeSubmission(input: {
   return { ok: true };
 }
 
+export type TugasStudentAnswersResult =
+  | { ok: true; data: TugasStudentAnswers }
+  | { ok: false; error: string };
+
+export async function getTugasStudentAnswers(input: {
+  tugasId: number;
+  userId: number;
+}): Promise<TugasStudentAnswersResult> {
+  await requireUser("guru");
+
+  if (
+    !Number.isInteger(input.tugasId) ||
+    input.tugasId <= 0 ||
+    !Number.isInteger(input.userId) ||
+    input.userId <= 0
+  ) {
+    return { ok: false, error: "Data siswa tidak valid." };
+  }
+
+  const data = await listTugasStudentAnswers(input.tugasId, input.userId);
+  if (!data) return { ok: false, error: "Data jawaban siswa tidak ditemukan." };
+
+  return { ok: true, data };
+}
+
 export type ResetTugasSubmissionResult = {
   ok: boolean;
   error?: string;
@@ -1008,7 +1035,17 @@ export async function resetTugasSubmission(input: {
       )
       .returning({ id: tugasSubmissions.id });
 
-    if (deleted.length === 0) {
+    const deletedLinks = await getDb()
+      .delete(tugasLinks)
+      .where(
+        and(
+          eq(tugasLinks.tugasId, input.tugasId),
+          eq(tugasLinks.userId, input.userId),
+        ),
+      )
+      .returning({ id: tugasLinks.id });
+
+    if (deleted.length === 0 && deletedLinks.length === 0) {
       return { ok: false, error: "Belum ada pekerjaan untuk direset." };
     }
 
@@ -1030,7 +1067,7 @@ export async function resetTugasSubmission(input: {
         ),
       );
 
-    return { ok: true, deleted: deleted.length };
+    return { ok: true, deleted: deleted.length + deletedLinks.length };
   } catch (error) {
     console.error("tugas: gagal mereset pekerjaan siswa", error);
     return { ok: false, error: "Gagal mereset pekerjaan. Coba lagi." };

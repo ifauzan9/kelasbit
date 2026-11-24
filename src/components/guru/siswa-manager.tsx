@@ -4,6 +4,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronRight,
   Search,
   UserPlus,
   Users,
@@ -16,6 +17,7 @@ import { createSiswa, type SiswaState } from "@/lib/guru/siswa-actions";
 import type { KelasOption, SiswaView } from "@/lib/guru/types";
 
 const initialState: SiswaState = {};
+const PAGE_SIZE = 45;
 
 const inputClass =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
@@ -38,6 +40,7 @@ export function SiswaManager({
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("Semua");
   const [kelasFilter, setKelasFilter] = useState("semua");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     if (!state.success) return;
@@ -81,6 +84,16 @@ export function SiswaManager({
       return matchesStatus && matchesKelas && matchesQuery;
     });
   }, [siswa, query, status, kelasFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageRows = filtered.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+  const rangeStart =
+    filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(currentPage * PAGE_SIZE, filtered.length);
 
   return (
     <section
@@ -236,14 +249,20 @@ export function SiswaManager({
               <input
                 type="search"
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setPage(1);
+                }}
                 placeholder="Cari nama, username, email…"
                 className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-10 pr-9 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-emerald-300 focus:bg-white focus:ring-2 focus:ring-emerald-100"
               />
               {query ? (
                 <button
                   type="button"
-                  onClick={() => setQuery("")}
+                  onClick={() => {
+                    setQuery("");
+                    setPage(1);
+                  }}
                   aria-label="Bersihkan pencarian"
                   className="absolute right-2 flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-600"
                 >
@@ -261,7 +280,10 @@ export function SiswaManager({
                 <button
                   key={item}
                   type="button"
-                  onClick={() => setStatus(item)}
+                  onClick={() => {
+                    setStatus(item);
+                    setPage(1);
+                  }}
                   className={
                     active
                       ? "inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-md shadow-emerald-600/20"
@@ -286,7 +308,10 @@ export function SiswaManager({
               <span className="sr-only">Filter kelas</span>
               <select
                 value={kelasFilter}
-                onChange={(event) => setKelasFilter(event.target.value)}
+                onChange={(event) => {
+                  setKelasFilter(event.target.value);
+                  setPage(1);
+                }}
                 className="h-9 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100"
               >
                 <option value="semua">Semua kelas</option>
@@ -316,11 +341,46 @@ export function SiswaManager({
             </p>
           </div>
         ) : (
-          <ul className="space-y-2.5 p-4 sm:p-5">
-            {filtered.map((item) => (
-              <SiswaRow key={item.id} siswa={item} kelasOptions={kelasOptions} />
-            ))}
-          </ul>
+          <>
+            <ul className="space-y-2.5 p-4 sm:p-5">
+              {pageRows.map((item) => (
+                <SiswaRow key={item.id} siswa={item} kelasOptions={kelasOptions} />
+              ))}
+            </ul>
+
+            {filtered.length > PAGE_SIZE ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3.5 sm:px-5">
+                <p className="text-[11px] font-medium text-slate-400">
+                  Menampilkan {rangeStart}–{rangeEnd} dari {filtered.length} siswa
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={currentPage <= 1}
+                    onClick={() => setPage((value) => Math.max(1, value - 1))}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ChevronRight className="h-3 w-3 rotate-180" />
+                    Sebelumnya
+                  </button>
+                  <span className="px-1 text-[10px] font-bold text-slate-500">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={currentPage >= totalPages}
+                    onClick={() =>
+                      setPage((value) => Math.min(totalPages, value + 1))
+                    }
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Berikutnya
+                    <ChevronRight className="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </>
         )}
       </div>
     </section>

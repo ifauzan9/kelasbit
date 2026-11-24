@@ -6,6 +6,7 @@ import {
   AlertCircle,
   CheckCircle2,
   ChevronRight,
+  Link2,
   MapPin,
   Search,
   Users,
@@ -20,12 +21,13 @@ import {
   gpsPrecisionTier,
   type GpsPrecisionTier,
 } from "@/lib/tugas/location";
-import { resetTugasSubmission } from "@/lib/tugas/actions";
+import { getTugasStudentAnswers, resetTugasSubmission } from "@/lib/tugas/actions";
 import type {
   TugasLocationView,
   TugasRoster,
   TugasRosterRow,
   TugasRosterStatus,
+  TugasStudentAnswers,
   TugasSubmissionView,
 } from "@/lib/tugas/types";
 
@@ -128,6 +130,106 @@ function LocationCell({
   );
 }
 
+function StudentAnswersPanel({ data }: { data: TugasStudentAnswers }) {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50/70 px-3.5 py-3">
+        <p className="text-[11px] font-semibold text-slate-600">
+          Soal selesai:{" "}
+          <span className="font-extrabold text-slate-900">
+            {data.solvedCount}/{data.questionCount}
+          </span>
+        </p>
+        <p className="text-[11px] font-semibold text-slate-600">
+          Nilai total:{" "}
+          <span className="font-extrabold text-slate-900">
+            {data.totalScore}/{data.maxScore}
+          </span>
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-sky-200 bg-sky-50/50 px-3.5 py-3">
+        <p className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wide text-sky-700">
+          <Link2 className="h-3.5 w-3.5" />
+          Tautan pengumpulan
+        </p>
+        {data.link ? (
+          <a
+            href={data.link.url}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1.5 block break-all text-[11px] font-semibold text-sky-800 underline underline-offset-2 hover:text-sky-950"
+          >
+            {data.link.url}
+          </a>
+        ) : (
+          <p className="mt-1 text-[11px] font-medium text-slate-500">
+            Belum dikumpulkan.
+          </p>
+        )}
+      </div>
+
+      <ul className="space-y-2">
+        {data.answers.map((answer) => (
+          <li key={answer.questionId}>
+            <details className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <summary className="flex cursor-pointer flex-wrap items-center gap-2 px-3.5 py-3 text-xs [&::-webkit-details-marker]:hidden">
+                <span
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[11px] font-extrabold ring-1 ${
+                    answer.passed
+                      ? "bg-emerald-600 text-white ring-emerald-600"
+                      : "bg-slate-100 text-slate-600 ring-slate-200"
+                  }`}
+                >
+                  {answer.orderNo}
+                </span>
+                <span className="min-w-0 flex-1 font-bold text-slate-800">
+                  {answer.title}
+                </span>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold text-slate-700">
+                  {answer.bestScore ?? 0}/{answer.maxScore}
+                </span>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ring-1 ${
+                    answer.passed
+                      ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+                      : answer.attempts > 0
+                        ? "bg-amber-50 text-amber-700 ring-amber-100"
+                        : "bg-slate-100 text-slate-500 ring-slate-200"
+                  }`}
+                >
+                  {answer.passed
+                    ? "Selesai"
+                    : answer.attempts > 0
+                      ? "Belum benar"
+                      : "Belum dikerjakan"}
+                </span>
+                <span className="text-[10px] font-medium text-slate-400">
+                  {answer.attempts} percobaan
+                </span>
+                <ChevronRight className="h-4 w-4 text-slate-300" />
+              </summary>
+              <div className="border-t border-slate-100 p-3.5">
+                {answer.latestSubmission ? (
+                  <SubmissionDetailContent
+                    submission={answer.latestSubmission}
+                    maxScore={answer.maxScore}
+                    expectedOutput={answer.expectedOutput}
+                  />
+                ) : (
+                  <p className="rounded-xl border border-dashed border-slate-200 px-3 py-5 text-center text-[11px] font-medium text-slate-400">
+                    Belum ada jawaban untuk soal ini.
+                  </p>
+                )}
+              </div>
+            </details>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 type Filter =
   | "semua"
   | "lulus"
@@ -152,6 +254,7 @@ export function TugasRosterTable({
   maxScore,
   expectedOutput,
   requireGps,
+  isMultiQuestion,
 }: {
   tugasId: number;
   roster: TugasRoster;
@@ -159,6 +262,7 @@ export function TugasRosterTable({
   maxScore: number;
   expectedOutput: string;
   requireGps: boolean;
+  isMultiQuestion: boolean;
 }) {
   const [filter, setFilter] = useState<Filter>("semua");
   const [query, setQuery] = useState("");
@@ -170,7 +274,45 @@ export function TugasRosterTable({
   );
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  const [studentAnswers, setStudentAnswers] =
+    useState<TugasStudentAnswers | null>(null);
+  const [answersLoading, setAnswersLoading] = useState(false);
+  const [answersError, setAnswersError] = useState<string | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (selectedUserId === null || !isMultiQuestion) {
+      setStudentAnswers(null);
+      setAnswersError(null);
+      setAnswersLoading(false);
+      return;
+    }
+
+    setStudentAnswers(null);
+    setAnswersError(null);
+    setAnswersLoading(true);
+
+    getTugasStudentAnswers({ tugasId, userId: selectedUserId })
+      .then((result) => {
+        if (cancelled) return;
+        if (result.ok) setStudentAnswers(result.data);
+        else setAnswersError(result.error);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAnswersError("Gagal memuat jawaban siswa.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAnswersLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isMultiQuestion, selectedUserId, tugasId]);
 
   const filters: { id: Filter; label: string; count: number }[] = roster.hasKkm
     ? [
@@ -229,9 +371,9 @@ export function TugasRosterTable({
     });
   }
 
-  async function handleReset(submission: TugasSubmissionView) {
+  async function handleReset(userId: number, userName: string) {
     const confirmed = window.confirm(
-      `Reset seluruh pekerjaan ${submission.userName} pada tugas ini?\n\nSemua percobaan, nilai, feedback, status lulus, dan riwayat pengumpulan akan dihapus. Tindakan ini tidak bisa dibatalkan.`,
+      `Reset seluruh pekerjaan ${userName} pada tugas ini?\n\nSemua percobaan, nilai, feedback, status lulus, tautan pengumpulan, dan riwayat akan dihapus. Tindakan ini tidak bisa dibatalkan.`,
     );
     if (!confirmed) return;
 
@@ -239,8 +381,8 @@ export function TugasRosterTable({
     setResetError(null);
 
     const result = await resetTugasSubmission({
-      tugasId: submission.tugasId,
-      userId: submission.userId,
+      tugasId,
+      userId,
     });
 
     setResetting(false);
@@ -251,9 +393,7 @@ export function TugasRosterTable({
     }
 
     setSelectedUserId(null);
-    setSelectedUserIds((current) =>
-      current.filter((id) => id !== submission.userId),
-    );
+    setSelectedUserIds((current) => current.filter((id) => id !== userId));
     router.refresh();
   }
 
@@ -607,13 +747,13 @@ export function TugasRosterTable({
                       </td>
                       <td className="px-2 py-2.5 text-right">
                         <div className="flex flex-wrap items-center justify-end gap-1">
-                          {submission ? (
+                          {isMultiQuestion || submission ? (
                             <button
                               type="button"
                               onClick={() => {
                                 setCompareUserIds(null);
                                 setResetError(null);
-                                setSelectedUserId(submission.userId);
+                                setSelectedUserId(row.userId);
                               }}
                               className="rounded-lg px-2 py-1 text-[10px] font-bold text-emerald-700 transition-colors hover:bg-emerald-50"
                             >
@@ -633,7 +773,7 @@ export function TugasRosterTable({
                               Kode GPS
                             </button>
                           ) : null}
-                          {!submission && !requireGps ? (
+                          {!submission && !requireGps && !isMultiQuestion ? (
                             <span className="text-[10px] text-slate-300">—</span>
                           ) : null}
                         </div>
@@ -710,19 +850,44 @@ export function TugasRosterTable({
                     {selectedSubmission?.userName ?? selectedRow.name}
                   </h2>
                   <p className="mt-0.5 text-[11px] font-medium text-slate-400">
-                    {selectedSubmission
-                      ? `Percobaan ke-${selectedSubmission.attemptNo} · ${dateFormatter.format(
-                          new Date(selectedSubmission.submittedAt),
-                        )} WIB`
-                      : "Belum ada pengumpulan · kode GPS tetap bisa dibuat"}
+                    {isMultiQuestion
+                      ? answersLoading
+                        ? "Memuat semua jawaban soal…"
+                        : studentAnswers
+                          ? `${studentAnswers.solvedCount}/${studentAnswers.questionCount} soal selesai · Nilai ${studentAnswers.totalScore}/${studentAnswers.maxScore}`
+                          : "Semua soal dan tautan pengumpulan"
+                      : selectedSubmission
+                        ? `Percobaan ke-${selectedSubmission.attemptNo} · ${dateFormatter.format(
+                            new Date(selectedSubmission.submittedAt),
+                          )} WIB`
+                        : "Belum ada pengumpulan · kode GPS tetap bisa dibuat"}
                   </p>
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                    {selectedSubmission ? (
+                    {isMultiQuestion && studentAnswers ? (
+                      <>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold text-slate-700">
+                          Nilai {studentAnswers.totalScore}/{studentAnswers.maxScore}
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ring-1 ${
+                            studentAnswers.link
+                              ? "bg-sky-50 text-sky-700 ring-sky-100"
+                              : "bg-amber-50 text-amber-700 ring-amber-100"
+                          }`}
+                        >
+                          {studentAnswers.link
+                            ? "Tautan terkumpul"
+                            : "Tautan belum"}
+                        </span>
+                      </>
+                    ) : null}
+                    {!isMultiQuestion && selectedSubmission ? (
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold text-slate-700">
                         Nilai {selectedSubmission.score ?? "—"} / {maxScore}
                       </span>
                     ) : null}
-                    {selectedSubmission?.passed !== null &&
+                    {!isMultiQuestion &&
+                    selectedSubmission?.passed !== null &&
                     selectedSubmission?.passed !== undefined ? (
                       <span
                         className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ring-1 ${
@@ -744,10 +909,12 @@ export function TugasRosterTable({
               </div>
 
               <div className="flex shrink-0 items-start gap-1.5">
-                {selectedSubmission ? (
+                {(isMultiQuestion
+                  ? selectedRow.attempts > 0 || Boolean(selectedRow.link)
+                  : Boolean(selectedSubmission)) ? (
                   <button
                     type="button"
-                    onClick={() => handleReset(selectedSubmission)}
+                    onClick={() => handleReset(selectedRow.userId, selectedRow.name)}
                     disabled={resetting}
                     className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -786,7 +953,33 @@ export function TugasRosterTable({
             ) : null}
 
             <div className="overflow-y-auto p-4 sm:p-5">
-              {selectedSubmission ? (
+              {isMultiQuestion ? (
+                answersLoading ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center">
+                    <p className="text-sm font-semibold text-slate-500">
+                      Memuat semua soal dan jawaban…
+                    </p>
+                  </div>
+                ) : answersError ? (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-5 text-center">
+                    <p className="text-sm font-semibold text-rose-700">
+                      {answersError}
+                    </p>
+                    <p className="mt-1 text-[11px] text-rose-600/80">
+                      Tutup modal lalu coba buka kembali.
+                    </p>
+                  </div>
+                ) : studentAnswers ? (
+                  <StudentAnswersPanel data={studentAnswers} />
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center">
+                    <Users className="mx-auto h-8 w-8 text-slate-300" />
+                    <p className="mt-2 text-sm font-semibold text-slate-500">
+                      Data jawaban belum tersedia.
+                    </p>
+                  </div>
+                )
+              ) : selectedSubmission ? (
                 <SubmissionDetailContent
                   submission={selectedSubmission}
                   maxScore={maxScore}

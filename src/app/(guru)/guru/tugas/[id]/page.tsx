@@ -356,6 +356,7 @@ export default async function GuruTugasDetailPage({
             maxScore={tugas.maxScore}
             expectedOutput={tugas.expectedOutput}
             requireGps={tugas.requireGps}
+            isMultiQuestion={isMultiQuestion}
           />
         </div>
       ) : null}

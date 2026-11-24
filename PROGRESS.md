@@ -140,6 +140,8 @@ lewat `requireUser(role)` yang memvalidasi sesi ke database.
 - Halaman `/guru/siswa` — statistik (total, aktif, nonaktif, tanpa kelas), form tambah
   siswa (nama, email, kelas), daftar siswa dengan pencarian, filter status, dan filter
   kelas.
+- Daftar siswa memakai **pagination 45 siswa per halaman**; pencarian/filter otomatis
+  kembali ke halaman 1, dengan informasi rentang dan tombol Sebelumnya/Berikutnya.
 - Username dibuat otomatis dari nama (`budi.santoso`; bentrok → `budi.santoso2`) dan
   tidak berubah setelah dibuat. Password awal 12 karakter acak tanpa karakter ambigu.
 - Kredensial ditampilkan sekali di panel dengan tombol salin (termasuk nama kelas);
@@ -597,6 +599,10 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
     tombol **Tambah siswa** yang sudah ada;
   - detail guru menampilkan daftar 20 soal (instruksi, output, kunci, aturan),
     link siswa di roster, reset pekerjaan, dan export Excel nilai total;
+  - modal **Lihat jawaban** pada tugas multi-soal memuat **semua soal**:
+    jawaban terbaru per soal, nilai terbaik, status, jumlah percobaan, tautan
+    pengumpulan, dan form nilai manual tiap soal; soal yang belum dikerjakan
+    tetap tampil. Reset pekerjaan juga menghapus tautan siswa;
   - data 20 soal disimpan di `scripts/seed-pengganti-uprak.ts`; versi SQL untuk
     produksi ada di `scripts/seed-pengganti-uprak.sql` (jalankan setelah
     migration `0020` + `0021` dan backup DB);
