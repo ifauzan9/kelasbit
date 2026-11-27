@@ -6,7 +6,7 @@ INSERT INTO tugas (
   structure_weight, block_copy_paste, manually_closed, require_gps, link_required, due_at
 )
 SELECT
-  'Pengganti Uprak', 'Kerjakan 20 soal coding. Setiap soal bernilai 5 poin sehingga nilai total 100. Setelah soal selesai, isi formulir tautan pengumpulan. Tautan wajib diisi tetapi tidak menambah nilai. Nilai akhir muncul setelah seluruh soal 5/5 dan tautan terkumpul. Jeda 5 menit berlaku setiap 10 percobaan pada soal yang sama. Semua input dibaca sebagai teks, tanpa konversi tipe data.', 'tugas',
+  'Pengganti Uprak', 'Kerjakan 20 soal coding. Setiap soal bernilai 5 poin sehingga nilai total 100. Setelah soal selesai, kumpulkan tautan video tugas dari TikTok atau Instagram. Akun TikTok/Instagram harus publik (tidak dikunci). Video wajib diisi tetapi tidak menambah nilai. Nilai akhir muncul setelah seluruh soal 5/5 dan video terkumpul. Jeda 5 menit berlaku setiap 10 percobaan pada soal yang sama. Semua input dibaca sebagai teks, tanpa konversi tipe data.', 'tugas',
   'siswa', '', '', '',
   100, 20, 100, true, NULL,
   40, false, false, false, true,

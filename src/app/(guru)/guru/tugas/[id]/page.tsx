@@ -150,7 +150,7 @@ export default async function GuruTugasDetailPage({
               ) : null}
               {tugas.linkRequired ? (
                 <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-sky-700 ring-1 ring-sky-100">
-                  Tautan wajib
+                  Video wajib
                 </span>
               ) : null}
               {tugas.dueAt ? (

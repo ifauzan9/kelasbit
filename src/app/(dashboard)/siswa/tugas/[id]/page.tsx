@@ -172,8 +172,8 @@ export default async function SiswaTugasDetailPage({
               } soal selesai${
                 tugas.linkRequired
                   ? link
-                    ? " · tautan terkumpul"
-                    : " · tautan belum"
+                    ? " · video terkumpul"
+                    : " · video belum"
                   : ""
               }`
             : repeat
@@ -326,7 +326,7 @@ export default async function SiswaTugasDetailPage({
           {tugas.linkRequired ? (
             <div className="mt-4">
               <h3 className="mb-2 text-sm font-extrabold tracking-tight text-slate-900">
-                21. Bukti Pengumpulan Tautan
+                21. Bukti Pengumpulan Video
               </h3>
               <TugasLinkForm
                 tugasId={tugas.id}
@@ -343,7 +343,7 @@ export default async function SiswaTugasDetailPage({
               role="status"
               className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800"
             >
-              Semua soal dan tautan selesai. Nilai akhir kamu {totalBestScore} /{" "}
+              Semua soal dan video selesai. Nilai akhir kamu {totalBestScore} /{" "}
               {tugas.maxScore}. Tugas dinyatakan selesai.
             </p>
           ) : closed ? (

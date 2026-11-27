@@ -49,6 +49,16 @@ const JENIS: TugasJenis[] = ["tugas", "ulangan", "remedial"];
 const TARGET_TYPES: TugasTargetType[] = ["semua", "kelas", "siswa"];
 const STATUSES: LabRunStatus[] = ["success", "error", "timeout", "stopped"];
 
+function isAllowedVideoHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return (
+    host === "tiktok.com" ||
+    host.endsWith(".tiktok.com") ||
+    host === "instagram.com" ||
+    host.endsWith(".instagram.com")
+  );
+}
+
 async function hasTugasLink(tugasId: number, userId: number): Promise<boolean> {
   const [row] = await getDb()
     .select({ id: tugasLinks.id })
@@ -755,17 +765,26 @@ export async function submitTugasLink(input: {
   }
 
   let rawUrl = input.url.trim().slice(0, 2_000);
-  if (!rawUrl) return { ok: false, error: "Tautan wajib diisi." };
+  if (!rawUrl) return { ok: false, error: "Tautan video wajib diisi." };
   if (!/^https?:\/\//i.test(rawUrl)) rawUrl = `https://${rawUrl}`;
 
   try {
     const url = new URL(rawUrl);
     if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return { ok: false, error: "Tautan harus diawali http:// atau https://." };
+      return {
+        ok: false,
+        error: "Tautan video harus diawali http:// atau https://.",
+      };
+    }
+    if (!isAllowedVideoHost(url.hostname)) {
+      return {
+        ok: false,
+        error: "Tautan video harus dari TikTok atau Instagram.",
+      };
     }
     rawUrl = url.toString();
   } catch {
-    return { ok: false, error: "Format tautan tidak valid." };
+    return { ok: false, error: "Format tautan video tidak valid." };
   }
 
   const [assignment] = await getDb()

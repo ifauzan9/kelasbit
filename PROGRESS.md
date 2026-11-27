@@ -1,6 +1,6 @@
 # Status Pengerjaan
 
-Terakhir diperbarui: 23 November 2026
+Terakhir diperbarui: 27 November 2026
 
 ## Yang sudah jadi
 
@@ -646,6 +646,21 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
     belum benar**; seluruh 20 soal dengan output exact: semuanya **5/5**.
     Database uji berisi 20 submission typo (`passed=false`) dan 20 submission
     exact (`passed=true`), dengan 0 checklist struktur gagal; data uji dihapus.
+  - tautan pengumpulan diganti menjadi **video TikTok/Instagram**
+    (27 November 2026):
+    - form “Bukti Pengumpulan Video” meminta link video dari TikTok/Instagram,
+      bukan tautan bebas; video tetap wajib diisi dan tidak menambah nilai;
+    - server menolak host selain `tiktok.com` / `instagram.com` (termasuk
+      subdomain seperti `vm.tiktok.com` dan `vt.tiktok.com`);
+    - form menampilkan peringatan bahwa akun TikTok/Instagram harus **publik
+      (tidak private/dikunci)** agar video bisa dibuka guru;
+    - label status di halaman siswa, daftar tugas, dan roster guru diganti dari
+      “tautan” menjadi “video”;
+    - deskripsi tugas **Pengganti Uprak** di `scripts/seed-pengganti-uprak.ts`
+      dan `.sql` ikut diperbarui agar menyebut video TikTok/Instagram dan akun
+      publik;
+    - tidak ada perubahan schema/migration; kolom `tugas_links.url` tetap
+      dipakai untuk menyimpan link video.
 
 - Menu **Tugas** aktif untuk guru & siswa:
   - guru: `/guru/tugas` (buat & daftar) dan `/guru/tugas/<id>` (pengumpulan + nilai);

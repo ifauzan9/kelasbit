@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Link2 } from "@/components/icons";
+import { AlertCircle, CheckCircle2, Link2 } from "@/components/icons";
 import { submitTugasLink } from "@/lib/tugas/actions";
 
 export function TugasLinkForm({
@@ -48,7 +48,7 @@ export function TugasLinkForm({
     }
 
     setUrl(result.url);
-    setNotice("Tautan berhasil disimpan.");
+    setNotice("Tautan video berhasil disimpan.");
     if (result.taskCompleted) {
       setFinalResult({ finalScore: result.finalScore });
       return;
@@ -70,34 +70,43 @@ export function TugasLinkForm({
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-extrabold text-slate-900">
-              Kumpulkan tautan tugas
+              Kumpulkan video tugas
             </p>
             <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">
-              Tautan ini wajib diisi dan tidak menambah nilai. Nilai total tetap{" "}
-              {taskMaxScore}.
+              Tempel tautan video dari TikTok atau Instagram. Akun harus publik
+              (tidak dikunci) dan tautan wajib diisi. Video tidak menambah
+              nilai; nilai total tetap {taskMaxScore}.
             </p>
           </div>
         </div>
 
         {initialUrl ? (
           <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-800">
-            Tautan sudah dikumpulkan. Kamu masih bisa memperbaruinya.
+            Video sudah dikumpulkan. Kamu masih bisa memperbaruinya.
           </p>
         ) : null}
 
         <form onSubmit={handleSubmit} className="mt-3 space-y-2">
           <label className="block text-[11px] font-bold text-slate-600">
-            Link tugas
+            Link video (TikTok/Instagram)
             <input
               type="url"
               value={url}
               onChange={(event) => setUrl(event.target.value)}
               disabled={disabled || pending}
               required
-              placeholder="https://contoh.com/tugas-kamu"
+              placeholder="https://www.tiktok.com/@akun/video/... atau https://www.instagram.com/reel/..."
               className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100 disabled:bg-slate-100 disabled:text-slate-400"
             />
           </label>
+
+          <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
+            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              Akun TikTok/Instagram harus publik (jangan private/dikunci).
+              Video dari akun private tidak bisa dibuka oleh guru.
+            </span>
+          </p>
 
           {error ? (
             <p className="rounded-lg bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-100">
@@ -119,12 +128,12 @@ export function TugasLinkForm({
             {pending
               ? "Menyimpan…"
               : initialUrl
-                ? "Perbarui tautan"
-                : "Kumpulkan tautan"}
+                ? "Perbarui video"
+                : "Kumpulkan video"}
           </button>
           {disabled ? (
             <p className="text-[11px] font-medium text-amber-700">
-              Batas waktu sudah lewat. Tautan tidak dapat diubah.
+              Batas waktu sudah lewat. Video tidak dapat diubah.
             </p>
           ) : null}
         </form>
@@ -154,7 +163,7 @@ export function TugasLinkForm({
               </span>
             </p>
             <p className="mt-2 text-xs leading-relaxed text-slate-500">
-              Seluruh {totalQuestions} soal dan tautan pengumpulan sudah lengkap.
+              Seluruh {totalQuestions} soal dan video pengumpulan sudah lengkap.
               Nilai akhir kamu {finalResult.finalScore ?? 0} dan tugas dinyatakan
               selesai.
             </p>

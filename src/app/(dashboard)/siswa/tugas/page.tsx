@@ -168,8 +168,8 @@ export default async function SiswaTugasPage() {
                           {item.minScore !== null ? ` · KKM ${item.minScore}` : ""}
                           {item.linkRequired
                             ? item.linkSubmitted
-                              ? " · tautan terkumpul"
-                              : " · tautan belum"
+                              ? " · video terkumpul"
+                              : " · video belum"
                             : ""}
                         </>
                       ) : repeat ? (

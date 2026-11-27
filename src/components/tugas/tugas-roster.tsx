@@ -151,7 +151,7 @@ function StudentAnswersPanel({ data }: { data: TugasStudentAnswers }) {
       <div className="rounded-2xl border border-sky-200 bg-sky-50/50 px-3.5 py-3">
         <p className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wide text-sky-700">
           <Link2 className="h-3.5 w-3.5" />
-          Tautan pengumpulan
+          Video pengumpulan
         </p>
         {data.link ? (
           <a
@@ -373,7 +373,7 @@ export function TugasRosterTable({
 
   async function handleReset(userId: number, userName: string) {
     const confirmed = window.confirm(
-      `Reset seluruh pekerjaan ${userName} pada tugas ini?\n\nSemua percobaan, nilai, feedback, status lulus, tautan pengumpulan, dan riwayat akan dihapus. Tindakan ini tidak bisa dibatalkan.`,
+      `Reset seluruh pekerjaan ${userName} pada tugas ini?\n\nSemua percobaan, nilai, feedback, status lulus, video pengumpulan, dan riwayat akan dihapus. Tindakan ini tidak bisa dibatalkan.`,
     );
     if (!confirmed) return;
 
@@ -613,7 +613,7 @@ export function TugasRosterTable({
                 </th>
                 <th className="px-2 py-2 font-extrabold">Siswa</th>
                 <th className="px-2 py-2 font-extrabold">Kelas</th>
-                <th className="px-2 py-2 font-extrabold">Tautan</th>
+                <th className="px-2 py-2 font-extrabold">Video</th>
                 <th className="px-2 py-2 text-center font-extrabold">
                   Percobaan
                 </th>
@@ -855,7 +855,7 @@ export function TugasRosterTable({
                         ? "Memuat semua jawaban soal…"
                         : studentAnswers
                           ? `${studentAnswers.solvedCount}/${studentAnswers.questionCount} soal selesai · Nilai ${studentAnswers.totalScore}/${studentAnswers.maxScore}`
-                          : "Semua soal dan tautan pengumpulan"
+                          : "Semua soal dan video pengumpulan"
                       : selectedSubmission
                         ? `Percobaan ke-${selectedSubmission.attemptNo} · ${dateFormatter.format(
                             new Date(selectedSubmission.submittedAt),
@@ -876,8 +876,8 @@ export function TugasRosterTable({
                           }`}
                         >
                           {studentAnswers.link
-                            ? "Tautan terkumpul"
-                            : "Tautan belum"}
+                            ? "Video terkumpul"
+                            : "Video belum"}
                         </span>
                       </>
                     ) : null}
