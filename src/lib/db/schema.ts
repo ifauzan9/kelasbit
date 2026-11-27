@@ -352,6 +352,16 @@ export const tugasLinks = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     url: text("url").notNull(),
+    /** Status pemeriksaan video oleh guru. */
+    reviewStatus: varchar("review_status", { length: 20 })
+      .notNull()
+      .default("menunggu"),
+    /** Alasan dari guru saat siswa diminta memperbaiki video. */
+    reviewNote: text("review_note"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewedBy: integer("reviewed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
     submittedAt: timestamp("submitted_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -419,6 +429,7 @@ export type Tugas = typeof tugas.$inferSelect;
 export type TugasQuestion = typeof tugasQuestions.$inferSelect;
 export type NewTugasQuestion = typeof tugasQuestions.$inferInsert;
 export type TugasLink = typeof tugasLinks.$inferSelect;
+export type TugasLinkReviewStatus = "menunggu" | "disetujui" | "perbaikan";
 export type TugasSubmission = typeof tugasSubmissions.$inferSelect;
 export type TugasJenis = "tugas" | "ulangan" | "remedial";
 export type TugasTargetType = "semua" | "kelas" | "siswa";

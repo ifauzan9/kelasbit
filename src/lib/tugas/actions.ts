@@ -749,8 +749,7 @@ export type SubmitTugasLinkResult =
   | {
       ok: true;
       url: string;
-      taskCompleted: boolean;
-      finalScore: number | null;
+      reviewStatus: "menunggu";
     }
   | { ok: false; error: string };
 
@@ -835,67 +834,124 @@ export async function submitTugasLink(input: {
 
   if (!allowed) return { ok: false, error: "Tugas ini bukan untukmu." };
 
+  const [existingLink] = await getDb()
+    .select({ reviewStatus: tugasLinks.reviewStatus })
+    .from(tugasLinks)
+    .where(
+      and(
+        eq(tugasLinks.tugasId, assignment.id),
+        eq(tugasLinks.userId, user.id),
+      ),
+    )
+    .limit(1);
+
+  if (existingLink?.reviewStatus === "disetujui") {
+    return {
+      ok: false,
+      error: "Video sudah disetujui guru dan tidak dapat diubah.",
+    };
+  }
+
   await getDb()
     .insert(tugasLinks)
     .values({
       tugasId: assignment.id,
       userId: user.id,
       url: rawUrl,
+      reviewStatus: "menunggu",
     })
     .onConflictDoUpdate({
       target: [tugasLinks.tugasId, tugasLinks.userId],
-      set: { url: rawUrl, updatedAt: new Date() },
+      set: {
+        url: rawUrl,
+        reviewStatus: "menunggu",
+        reviewNote: null,
+        reviewedAt: null,
+        reviewedBy: null,
+        updatedAt: new Date(),
+      },
     });
-
-  const [questions, submissions] = await Promise.all([
-    getDb()
-      .select({ id: tugasQuestions.id, maxScore: tugasQuestions.maxScore })
-      .from(tugasQuestions)
-      .where(eq(tugasQuestions.tugasId, assignment.id)),
-    getDb()
-      .select({
-        questionId: tugasSubmissions.questionId,
-        score: tugasSubmissions.score,
-      })
-      .from(tugasSubmissions)
-      .where(
-        and(
-          eq(tugasSubmissions.tugasId, assignment.id),
-          eq(tugasSubmissions.userId, user.id),
-        ),
-      ),
-  ]);
-
-  const bestByQuestion = new Map<number, number>();
-  for (const submission of submissions) {
-    if (submission.questionId === null || submission.score === null) continue;
-    const current = bestByQuestion.get(submission.questionId);
-    if (current === undefined || submission.score > current) {
-      bestByQuestion.set(submission.questionId, submission.score);
-    }
-  }
-
-  const taskCompleted =
-    questions.length > 0 &&
-    questions.every(
-      (question) =>
-        (bestByQuestion.get(question.id) ?? 0) >= question.maxScore,
-    );
-
-  const finalScore = Math.min(
-    assignment.maxScore,
-    questions.reduce(
-      (total, question) => total + (bestByQuestion.get(question.id) ?? 0),
-      0,
-    ),
-  );
 
   return {
     ok: true,
     url: rawUrl,
-    taskCompleted,
-    finalScore,
+    reviewStatus: "menunggu",
   };
+}
+
+export type ReviewTugasLinkResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export async function reviewTugasLink(input: {
+  tugasId: number;
+  userId: number;
+  decision: "selesai" | "perbaiki";
+  note?: string;
+}): Promise<ReviewTugasLinkResult> {
+  const guru = await requireUser("guru");
+
+  if (
+    !Number.isInteger(input.tugasId) ||
+    input.tugasId <= 0 ||
+    !Number.isInteger(input.userId) ||
+    input.userId <= 0
+  ) {
+    return { ok: false, error: "Data review tidak valid." };
+  }
+
+  if (input.decision !== "selesai" && input.decision !== "perbaiki") {
+    return { ok: false, error: "Keputusan review tidak valid." };
+  }
+
+  const note = (input.note ?? "").trim().slice(0, 1_000);
+  if (input.decision === "perbaiki" && !note) {
+    return { ok: false, error: "Alasan perbaikan wajib diisi." };
+  }
+
+  const [assignment] = await getDb()
+    .select({ id: tugas.id, linkRequired: tugas.linkRequired })
+    .from(tugas)
+    .where(eq(tugas.id, input.tugasId))
+    .limit(1);
+
+  if (!assignment) return { ok: false, error: "Tugas tidak ditemukan." };
+  if (!assignment.linkRequired) {
+    return { ok: false, error: "Tugas ini tidak meminta video." };
+  }
+
+  const [link] = await getDb()
+    .select({ id: tugasLinks.id })
+    .from(tugasLinks)
+    .where(
+      and(
+        eq(tugasLinks.tugasId, input.tugasId),
+        eq(tugasLinks.userId, input.userId),
+      ),
+    )
+    .limit(1);
+
+  if (!link) {
+    return { ok: false, error: "Siswa belum mengumpulkan video." };
+  }
+
+  try {
+    await getDb()
+      .update(tugasLinks)
+      .set({
+        reviewStatus: input.decision === "selesai" ? "disetujui" : "perbaikan",
+        reviewNote: input.decision === "perbaiki" ? note : null,
+        reviewedAt: new Date(),
+        reviewedBy: guru.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(tugasLinks.id, link.id));
+
+    return { ok: true };
+  } catch (error) {
+    console.error("tugas: gagal menyimpan review video", error);
+    return { ok: false, error: "Gagal menyimpan review video. Coba lagi." };
+  }
 }
 
 export type GradeSubmissionResult = {

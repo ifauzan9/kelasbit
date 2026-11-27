@@ -88,7 +88,17 @@ export default async function SiswaTugasDetailPage({
     isMultiQuestion &&
     questions.length > 0 &&
     questions.every((question) => question.passed);
-  const linkDone = !tugas.linkRequired || Boolean(link);
+  const linkDone =
+    !tugas.linkRequired || link?.reviewStatus === "disetujui";
+  const linkStatusLabel = !tugas.linkRequired
+    ? ""
+    : !link
+      ? "video belum"
+      : link.reviewStatus === "disetujui"
+        ? "video disetujui"
+        : link.reviewStatus === "perbaikan"
+          ? "video perlu diperbaiki"
+          : "video menunggu";
   const allRequirementsPassed = questionsPassed && linkDone;
   const attemptsLeft = Math.max(0, tugas.maxAttempts - submissions.length);
   const closed =
@@ -170,11 +180,7 @@ export default async function SiswaTugasDetailPage({
             ? `${questions.filter((question) => question.passed).length} / ${
                 questions.length
               } soal selesai${
-                tugas.linkRequired
-                  ? link
-                    ? " · video terkumpul"
-                    : " · video belum"
-                  : ""
+                tugas.linkRequired ? ` · ${linkStatusLabel}` : ""
               }`
             : repeat
               ? `${submissions.length} percobaan`
@@ -331,6 +337,8 @@ export default async function SiswaTugasDetailPage({
               <TugasLinkForm
                 tugasId={tugas.id}
                 initialUrl={link?.url ?? null}
+                reviewStatus={link?.reviewStatus ?? null}
+                reviewNote={link?.reviewNote ?? null}
                 disabled={closed}
                 taskMaxScore={tugas.maxScore}
                 totalQuestions={questions.length}
@@ -345,6 +353,22 @@ export default async function SiswaTugasDetailPage({
             >
               Semua soal dan video selesai. Nilai akhir kamu {totalBestScore} /{" "}
               {tugas.maxScore}. Tugas dinyatakan selesai.
+            </p>
+          ) : questionsPassed && link?.reviewStatus === "menunggu" ? (
+            <p
+              role="status"
+              className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800"
+            >
+              Semua soal sudah selesai. Video kamu sedang menunggu pemeriksaan
+              guru.
+            </p>
+          ) : questionsPassed && link?.reviewStatus === "perbaikan" ? (
+            <p
+              role="status"
+              className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800"
+            >
+              Semua soal sudah selesai. Video perlu diperbaiki sesuai catatan
+              guru sebelum tugas dinyatakan selesai.
             </p>
           ) : closed ? (
             <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">

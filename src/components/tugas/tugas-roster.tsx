@@ -21,8 +21,9 @@ import {
   gpsPrecisionTier,
   type GpsPrecisionTier,
 } from "@/lib/tugas/location";
-import { getTugasStudentAnswers, resetTugasSubmission } from "@/lib/tugas/actions";
+import { getTugasStudentAnswers, resetTugasSubmission, reviewTugasLink } from "@/lib/tugas/actions";
 import type {
+  TugasLinkView,
   TugasLocationView,
   TugasRoster,
   TugasRosterRow,
@@ -30,6 +31,7 @@ import type {
   TugasStudentAnswers,
   TugasSubmissionView,
 } from "@/lib/tugas/types";
+import type { TugasLinkReviewStatus } from "@/lib/db/schema";
 
 const PAGE_SIZE = 15;
 
@@ -54,6 +56,29 @@ const STATUS_CLASS: Record<TugasRosterStatus, string> = {
   mengerjakan: "bg-sky-50 text-sky-700 ring-sky-100",
   belum_mengerjakan: "bg-slate-100 text-slate-600 ring-slate-200",
 };
+
+const REVIEW_LABEL: Record<TugasLinkReviewStatus, string> = {
+  menunggu: "Menunggu diperiksa",
+  disetujui: "Disetujui",
+  perbaikan: "Perlu diperbaiki",
+};
+
+const REVIEW_CLASS: Record<TugasLinkReviewStatus, string> = {
+  menunggu: "bg-amber-50 text-amber-700 ring-amber-100",
+  disetujui: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+  perbaikan: "bg-rose-50 text-rose-700 ring-rose-100",
+};
+
+function ReviewBadge({ link }: { link: TugasLinkView }) {
+  return (
+    <span
+      className={`inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ring-1 ${REVIEW_CLASS[link.reviewStatus]}`}
+      title={link.reviewNote ?? undefined}
+    >
+      {REVIEW_LABEL[link.reviewStatus]}
+    </span>
+  );
+}
 
 const LOCATION_LABEL: Record<string, string> = {
   tersedia: "Tersedia",
@@ -154,14 +179,24 @@ function StudentAnswersPanel({ data }: { data: TugasStudentAnswers }) {
           Video pengumpulan
         </p>
         {data.link ? (
-          <a
-            href={data.link.url}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-1.5 block break-all text-[11px] font-semibold text-sky-800 underline underline-offset-2 hover:text-sky-950"
-          >
-            {data.link.url}
-          </a>
+          <div className="mt-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <ReviewBadge link={data.link} />
+              <a
+                href={data.link.url}
+                target="_blank"
+                rel="noreferrer"
+                className="break-all text-[11px] font-semibold text-sky-800 underline underline-offset-2 hover:text-sky-950"
+              >
+                {data.link.url}
+              </a>
+            </div>
+            {data.link.reviewNote ? (
+              <p className="mt-1.5 rounded-lg bg-white/70 px-2 py-1.5 text-[10px] font-medium text-rose-700 ring-1 ring-rose-100">
+                Catatan guru: {data.link.reviewNote}
+              </p>
+            ) : null}
+          </div>
         ) : (
           <p className="mt-1 text-[11px] font-medium text-slate-500">
             Belum dikumpulkan.
@@ -274,6 +309,12 @@ export function TugasRosterTable({
   );
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  const [reviewingUserId, setReviewingUserId] = useState<number | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [revisionRow, setRevisionRow] = useState<TugasRosterRow | null>(null);
+  const [revisionNote, setRevisionNote] = useState("");
+  const [revisionSaving, setRevisionSaving] = useState(false);
+  const [revisionError, setRevisionError] = useState<string | null>(null);
   const [studentAnswers, setStudentAnswers] =
     useState<TugasStudentAnswers | null>(null);
   const [answersLoading, setAnswersLoading] = useState(false);
@@ -359,7 +400,10 @@ export function TugasRosterTable({
     selectedUserId !== null
       ? roster.rows.find((row) => row.userId === selectedUserId)
       : undefined;
-  const modalOpen = selectedUserId !== null || compareUserIds !== null;
+  const modalOpen =
+    selectedUserId !== null ||
+    compareUserIds !== null ||
+    revisionRow !== null;
 
   function toggleSelection(userId: number) {
     setSelectedUserIds((current) => {
@@ -394,6 +438,64 @@ export function TugasRosterTable({
 
     setSelectedUserId(null);
     setSelectedUserIds((current) => current.filter((id) => id !== userId));
+    router.refresh();
+  }
+
+  async function handleApprove(row: TugasRosterRow) {
+    setReviewError(null);
+    setReviewingUserId(row.userId);
+
+    const result = await reviewTugasLink({
+      tugasId,
+      userId: row.userId,
+      decision: "selesai",
+    });
+
+    setReviewingUserId(null);
+
+    if (!result.ok) {
+      setReviewError(result.error);
+      return;
+    }
+
+    router.refresh();
+  }
+
+  function openRevision(row: TugasRosterRow) {
+    setReviewError(null);
+    setRevisionError(null);
+    setRevisionNote("");
+    setRevisionRow(row);
+  }
+
+  async function handleRevisionSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!revisionRow || revisionSaving) return;
+
+    if (!revisionNote.trim()) {
+      setRevisionError("Alasan perbaikan wajib diisi.");
+      return;
+    }
+
+    setRevisionSaving(true);
+    setRevisionError(null);
+
+    const result = await reviewTugasLink({
+      tugasId,
+      userId: revisionRow.userId,
+      decision: "perbaiki",
+      note: revisionNote,
+    });
+
+    setRevisionSaving(false);
+
+    if (!result.ok) {
+      setRevisionError(result.error);
+      return;
+    }
+
+    setRevisionRow(null);
+    setRevisionNote("");
     router.refresh();
   }
 
@@ -432,6 +534,8 @@ export function TugasRosterTable({
         setSelectedUserId(null);
         setCompareUserIds(null);
         setResetError(null);
+        setRevisionRow(null);
+        setRevisionError(null);
       }
     };
 
@@ -604,8 +708,17 @@ export function TugasRosterTable({
           ) : null}
         </div>
 
+        {reviewError ? (
+          <p
+            role="alert"
+            className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700"
+          >
+            {reviewError}
+          </p>
+        ) : null}
+
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[700px] text-left text-xs">
+          <table className="w-full min-w-[900px] text-left text-xs">
             <thead>
               <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-400">
                 <th className="w-8 px-2 py-2">
@@ -686,14 +799,17 @@ export function TugasRosterTable({
                       </td>
                       <td className="px-2 py-2.5">
                         {row.link ? (
-                          <a
-                            href={row.link.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[10px] font-bold text-sky-700 transition-colors hover:bg-sky-50"
-                          >
-                            Buka
-                          </a>
+                          <div className="flex flex-col items-start gap-1">
+                            <a
+                              href={row.link.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[10px] font-bold text-sky-700 transition-colors hover:bg-sky-50"
+                            >
+                              Buka
+                            </a>
+                            <ReviewBadge link={row.link} />
+                          </div>
                         ) : (
                           <span className="text-[10px] text-slate-300">—</span>
                         )}
@@ -747,6 +863,31 @@ export function TugasRosterTable({
                       </td>
                       <td className="px-2 py-2.5 text-right">
                         <div className="flex flex-wrap items-center justify-end gap-1">
+                          {row.link ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleApprove(row)}
+                                disabled={
+                                  reviewingUserId === row.userId ||
+                                  row.link.reviewStatus === "disetujui"
+                                }
+                                className="whitespace-nowrap rounded-lg bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                {reviewingUserId === row.userId
+                                  ? "Menyimpan…"
+                                  : "Selesai"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openRevision(row)}
+                                disabled={row.link.reviewStatus === "perbaikan"}
+                                className="whitespace-nowrap rounded-lg bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 ring-1 ring-rose-200 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                Perbaiki
+                              </button>
+                            </>
+                          ) : null}
                           {isMultiQuestion || submission ? (
                             <button
                               type="button"
@@ -871,12 +1012,12 @@ export function TugasRosterTable({
                         <span
                           className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ring-1 ${
                             studentAnswers.link
-                              ? "bg-sky-50 text-sky-700 ring-sky-100"
+                              ? REVIEW_CLASS[studentAnswers.link.reviewStatus]
                               : "bg-amber-50 text-amber-700 ring-amber-100"
                           }`}
                         >
                           {studentAnswers.link
-                            ? "Video terkumpul"
+                            ? REVIEW_LABEL[studentAnswers.link.reviewStatus]
                             : "Video belum"}
                         </span>
                       </>
@@ -1132,6 +1273,111 @@ export function TugasRosterTable({
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {revisionRow ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setRevisionRow(null);
+              setRevisionError(null);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="roster-revision-title"
+            className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_30px_80px_-20px_rgba(2,6,23,0.55)]"
+          >
+            <header className="flex items-start justify-between gap-3 border-b border-slate-100 p-4 sm:p-5">
+              <div className="min-w-0">
+                <p className="text-[10px] font-extrabold uppercase tracking-wide text-rose-600">
+                  Review video
+                </p>
+                <h2
+                  id="roster-revision-title"
+                  className="mt-0.5 truncate text-base font-extrabold text-slate-900"
+                >
+                  Perbaiki video {revisionRow.name}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setRevisionRow(null);
+                  setRevisionError(null);
+                }}
+                disabled={revisionSaving}
+                aria-label="Tutup form perbaikan"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </header>
+
+            <form onSubmit={handleRevisionSubmit} className="p-4 sm:p-5">
+              {revisionRow.link ? (
+                <a
+                  href={revisionRow.link.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block break-all rounded-xl bg-sky-50 px-3 py-2 text-[11px] font-semibold text-sky-800 underline underline-offset-2 ring-1 ring-sky-100 hover:text-sky-950"
+                >
+                  {revisionRow.link.url}
+                </a>
+              ) : null}
+
+              <label className="mt-3 block text-[11px] font-bold text-slate-600">
+                Alasan perbaikan (wajib)
+                <textarea
+                  value={revisionNote}
+                  onChange={(event) => setRevisionNote(event.target.value)}
+                  rows={4}
+                  maxLength={500}
+                  required
+                  autoFocus
+                  placeholder="Contoh: video belum menampilkan hasil program atau akun masih private."
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
+                />
+              </label>
+              <p className="mt-1 text-right text-[10px] font-medium text-slate-400">
+                {revisionNote.length}/500
+              </p>
+
+              {revisionError ? (
+                <p
+                  role="alert"
+                  className="mt-1 rounded-lg bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-100"
+                >
+                  {revisionError}
+                </p>
+              ) : null}
+
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRevisionRow(null);
+                    setRevisionError(null);
+                  }}
+                  disabled={revisionSaving}
+                  className="rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={revisionSaving}
+                  className="rounded-lg bg-rose-600 px-3 py-2 text-[11px] font-bold text-white transition-colors hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {revisionSaving ? "Menyimpan…" : "Simpan perbaikan"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}

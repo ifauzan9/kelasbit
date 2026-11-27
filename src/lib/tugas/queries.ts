@@ -275,6 +275,10 @@ function toLinkView(row: TugasLink): TugasLinkView {
     tugasId: row.tugasId,
     userId: row.userId,
     url: row.url,
+    reviewStatus: row.reviewStatus as TugasLinkView["reviewStatus"],
+    reviewNote: row.reviewNote,
+    reviewedAt: row.reviewedAt?.toISOString() ?? null,
+    reviewedBy: row.reviewedBy,
     submittedAt: row.submittedAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -705,7 +709,8 @@ export async function getTugasRoster(
     const attempts = attempt?.attempts ?? 0;
     const latest = latestByUser.get(student.id) ?? null;
     const link = linksByUser.get(student.id) ?? null;
-    const linkSubmitted = !assignment.linkRequired || Boolean(link);
+    const linkApproved =
+      !assignment.linkRequired || link?.reviewStatus === "disetujui";
     const bestScore = attempt?.best_score ?? null;
 
     let totalBest = 0;
@@ -727,13 +732,13 @@ export async function getTugasRoster(
       ? assignment.minScore !== null
         ? attempts > 0
           ? allQuestionsPassed &&
-            linkSubmitted &&
+            linkApproved &&
             totalBest >= assignment.minScore
           : null
         : null
       : assignment.minScore !== null
         ? attempts > 0
-          ? attempt?.passed_any === true && linkSubmitted
+          ? attempt?.passed_any === true && linkApproved
           : null
         : null;
 
@@ -857,7 +862,10 @@ export async function listTugasForSiswa(): Promise<TugasSiswaView[]> {
     const mine = byTugas.get(row.id) ?? [];
     const questions = questionsByTugas.get(row.id) ?? [];
     const isMultiQuestion = questions.length > 0;
-    const linkSubmitted = !row.linkRequired || linksByTugas.has(row.id);
+    const link = linksByTugas.get(row.id) ?? null;
+    const linkSubmitted = !row.linkRequired || Boolean(link);
+    const linkApproved =
+      !row.linkRequired || link?.reviewStatus === "disetujui";
     const scores = mine
       .map((item) => item.score)
       .filter((value): value is number => typeof value === "number");
@@ -892,9 +900,9 @@ export async function listTugasForSiswa(): Promise<TugasSiswaView[]> {
         ? mine.length > 0
           ? isMultiQuestion
             ? allQuestionsPassed &&
-              linkSubmitted &&
+              linkApproved &&
               (bestScore ?? 0) >= row.minScore
-            : mine.some((item) => item.passed === true) && linkSubmitted
+            : mine.some((item) => item.passed === true) && linkApproved
           : null
         : null;
     const lastSubmittedAt =
@@ -918,6 +926,7 @@ export async function listTugasForSiswa(): Promise<TugasSiswaView[]> {
         row.manuallyClosed ||
         (row.dueAt !== null && row.dueAt.getTime() <= now),
       linkSubmitted,
+      linkReviewStatus: link?.reviewStatus ?? null,
     };
   });
 }

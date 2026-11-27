@@ -661,6 +661,24 @@ tertunda, progress bar `data-active="true"` selama menunggu, dan spinner link ak
       publik;
     - tidak ada perubahan schema/migration; kolom `tugas_links.url` tetap
       dipakai untuk menyimpan link video.
+  - review video per siswa (27 November 2026):
+    - migration additif `0022_zippy_lorna_dane.sql`: kolom
+      `tugas_links.review_status` (default `menunggu`), `review_note`,
+      `reviewed_at`, dan `reviewed_by`; seluruh video lama otomatis berstatus
+      **menunggu diperiksa**;
+    - guru membuka video dari roster lalu menekan **Selesai** atau **Perbaiki**;
+      tombol Perbaiki wajib disertai alasan untuk siswa;
+    - siswa melihat status **menunggu diperiksa**, **perlu diperbaiki**, atau
+      **disetujui**; link masih bisa diganti selama menunggu atau setelah
+      diminta perbaikan, dan setiap pengiriman ulang mengembalikan status ke
+      menunggu;
+    - tugas baru dinyatakan selesai/lulus setelah seluruh soal selesai **dan**
+      video disetujui guru;
+    - daftar tugas siswa menampilkan badge **Lulus**, **Perlu perbaikan**, atau
+      **Menunggu diperiksa** di bagian atas kartu, plus status video di baris
+      informasi;
+    - panel jawaban guru menampilkan status review dan catatan perbaikan;
+    - reset pekerjaan juga menghapus status review karena baris tautan dihapus.
 
 - Menu **Tugas** aktif untuk guru & siswa:
   - guru: `/guru/tugas` (buat & daftar) dan `/guru/tugas/<id>` (pengumpulan + nilai);

@@ -8,6 +8,7 @@ import {
   Sparkles,
 } from "@/components/icons";
 import { listTugasForSiswa } from "@/lib/tugas/queries";
+import type { TugasLinkReviewStatus } from "@/lib/db/schema";
 
 export const metadata: Metadata = {
   title: "Tugas — KelasBit",
@@ -30,6 +31,24 @@ const JENIS_CLASS = {
   ulangan: "bg-violet-50 text-violet-700 ring-violet-100",
   remedial: "bg-amber-50 text-amber-700 ring-amber-100",
 } as const;
+
+const REVIEW_STATUS_LABEL: Record<TugasLinkReviewStatus, string> = {
+  menunggu: "Menunggu diperiksa",
+  disetujui: "Disetujui",
+  perbaikan: "Perlu perbaikan",
+};
+
+const REVIEW_STATUS_CLASS: Record<TugasLinkReviewStatus, string> = {
+  menunggu: "bg-amber-50 text-amber-700 ring-amber-100",
+  disetujui: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+  perbaikan: "bg-rose-50 text-rose-700 ring-rose-100",
+};
+
+const REVIEW_SHORT_LABEL: Record<TugasLinkReviewStatus, string> = {
+  menunggu: "video menunggu",
+  disetujui: "video disetujui",
+  perbaikan: "video perlu diperbaiki",
+};
 
 export default async function SiswaTugasPage() {
   const rows = await listTugasForSiswa();
@@ -72,25 +91,38 @@ export default async function SiswaTugasPage() {
                 isMultiQuestion ||
                 (item.repeatUntilPass && item.minScore !== null);
               const passed = item.passed === true;
-              const selesai = isMultiQuestion
-                ? passed
-                : !item.manuallyClosed &&
-                  (passed || (!repeat && item.attemptsLeft <= 0));
-              const status = item.manuallyClosed
-                ? "Ditutup"
-                : passed
-                  ? "Lulus"
-                  : item.closed
-                    ? "Ditutup"
-                    : item.attemptsUsed === 0
-                      ? "Belum dikerjakan"
-                      : isMultiQuestion
-                        ? "Belum selesai"
-                        : item.minScore !== null
-                          ? "Belum lulus"
-                          : item.bestScore !== null
-                            ? `Dinilai: ${item.bestScore}/${item.maxScore}`
-                            : "Terkumpul";
+              const reviewStatus = item.linkRequired
+                ? item.linkReviewStatus
+                : null;
+              const status = passed
+                ? "Lulus"
+                : item.manuallyClosed
+                  ? "Ditutup"
+                  : reviewStatus === "perbaikan"
+                    ? REVIEW_STATUS_LABEL.perbaikan
+                    : reviewStatus === "menunggu"
+                      ? REVIEW_STATUS_LABEL.menunggu
+                      : item.closed
+                        ? "Ditutup"
+                        : item.attemptsUsed === 0
+                          ? "Belum dikerjakan"
+                          : isMultiQuestion
+                            ? "Belum selesai"
+                            : item.minScore !== null
+                              ? "Belum lulus"
+                              : item.bestScore !== null
+                                ? `Dinilai: ${item.bestScore}/${item.maxScore}`
+                                : "Terkumpul";
+              const statusClass = passed
+                ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+                : item.manuallyClosed
+                  ? "bg-slate-100 text-slate-500 ring-slate-200"
+                  : reviewStatus === "menunggu" ||
+                      reviewStatus === "perbaikan"
+                    ? REVIEW_STATUS_CLASS[reviewStatus]
+                    : item.closed
+                      ? "bg-slate-100 text-slate-500 ring-slate-200"
+                      : "bg-amber-50 text-amber-700 ring-amber-100";
 
               return (
                 <li
@@ -114,13 +146,7 @@ export default async function SiswaTugasPage() {
                         </span>
                       ) : null}
                       <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide ring-1 ${
-                          selesai
-                            ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
-                            : item.closed
-                              ? "bg-slate-100 text-slate-500 ring-slate-200"
-                              : "bg-amber-50 text-amber-700 ring-amber-100"
-                        }`}
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide ring-1 ${statusClass}`}
                       >
                         {status}
                       </span>
@@ -167,8 +193,8 @@ export default async function SiswaTugasPage() {
                           </span>
                           {item.minScore !== null ? ` · KKM ${item.minScore}` : ""}
                           {item.linkRequired
-                            ? item.linkSubmitted
-                              ? " · video terkumpul"
+                            ? item.linkReviewStatus
+                              ? ` · ${REVIEW_SHORT_LABEL[item.linkReviewStatus]}`
                               : " · video belum"
                             : ""}
                         </>

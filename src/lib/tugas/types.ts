@@ -1,6 +1,7 @@
 import type {
   LabRunStatus,
   TugasJenis,
+  TugasLinkReviewStatus,
   TugasTargetType,
 } from "@/lib/db/schema";
 import type { LoginLocationStatus } from "@/lib/auth/geolocation";
@@ -86,6 +87,10 @@ export type TugasLinkView = {
   tugasId: number;
   userId: number;
   url: string;
+  reviewStatus: TugasLinkReviewStatus;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  reviewedBy: number | null;
   submittedAt: string;
   updatedAt: string;
 };
@@ -122,6 +127,7 @@ export type TugasSiswaView = TugasView & {
   lastSubmittedAt: string | null;
   closed: boolean;
   linkSubmitted: boolean;
+  linkReviewStatus: TugasLinkReviewStatus | null;
 };
 
 export type TugasRosterStatus =
